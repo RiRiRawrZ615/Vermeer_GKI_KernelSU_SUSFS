@@ -367,7 +367,7 @@ jobs:
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
 
-          perl -pi -e '$. == eof && s|echo "\$res"|echo "5.15.123-android13-8-00008-g3ca6a2912c7e-ab11087001"|' ./common/scripts/setlocalversion
+          perl -pi -e 's|echo "\$res"|echo "5.15.123-android13-8-00008-g3ca6a2912c7e-ab11087001"|' ./common/scripts/setlocalversion
 
           # Run perl command to modify UTS_VERSION
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Nov 11 06:58:10 UTC 2023"}' ./common/scripts/mkcompile_h

@@ -7,11 +7,6 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
-      build_a13_515:
-        description: 'Build a13 5.15?'
-        required: true
-        type: boolean
-        default: true
       make_release:
         description: 'Do you want to create a release?'
         required: true
@@ -43,7 +38,6 @@ on:
 
 jobs:
   build-kernel-a13-5-15:
-    if: ${{ inputs.build_a13_515 }}
     uses: ./.github/workflows/kernel-a13-5.15.yml
     secrets: inherit
     with:

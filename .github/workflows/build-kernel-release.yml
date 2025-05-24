@@ -55,13 +55,13 @@ jobs:
       REPO_OWNER: RiRiRawrZ615
       REPO_NAME: Vermeer_GKI_KernelSU_SUSFS
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "*TEST BUILD* GKI Kernels With KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} & SUSFS v1.5.5 *TEST BUILD*"
+      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} & SUSFS v1.5.7 *VERMEER BUILD*"
       RELEASE_NOTES: |
-        This release contains KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} and SUSFS v1.5.5
+        This release contains KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} and SUSFS v1.5.7
         
         Features:
         -> KernelSU-${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }}
-        -> SUSFS ඞ v1.5.5 
+        -> SUSFS ඞ v1.5.7 
         -> Manual Hooks for Better Hiding
         -> Wireguard Support
         -> Simple Maphide for LineageOS Detections
@@ -229,7 +229,7 @@ jobs:
             # Fetch the latest tag from GitHub (this is the latest tag based on the GitHub API)
             LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
             if [ -z "$LATEST_TAG" ]; then
-              LATEST_TAG="v1.5.5-r0"
+              LATEST_TAG="v1.5.7-r0"
             fi
             
             NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')

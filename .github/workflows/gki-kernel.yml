@@ -441,8 +441,11 @@ jobs:
         with:
           name: patch-rejects
           path: "**/*.rej"
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
 
-            
       - name: Create Bootimgs Folder and Copy Images
         if: ${{ inputs.android_version == 'android12' || inputs.android_version == 'android13' }}
         run: |

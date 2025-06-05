@@ -418,7 +418,7 @@ jobs:
             fi
             ccache --show-stats
 
-- name: Check for .rej files if patch/build failed
+      - name: Check for .rej
         if: failure()
         run: |
           echo "::group::Checking for .rej files..."
@@ -440,7 +440,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: patch-rejects
-          path: '**/*.rej'            
+          path: "**/*.rej"
+
             
       - name: Create Bootimgs Folder and Copy Images
         if: ${{ inputs.android_version == 'android12' || inputs.android_version == 'android13' }}

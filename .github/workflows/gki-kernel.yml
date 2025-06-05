@@ -417,6 +417,30 @@ jobs:
               tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             fi
             ccache --show-stats
+
+- name: Check for .rej files if patch/build failed
+        if: failure()
+        run: |
+          echo "::group::Checking for .rej files..."
+          REJ_FILES=$(find . -name '*.rej')
+          if [ -z "$REJ_FILES" ]; then
+            echo "No .rej files found."
+          else
+            echo "Found .rej files:"
+            echo "$REJ_FILES"
+            for f in $REJ_FILES; do
+              echo "--- $f ---"
+              cat "$f"
+            done
+          fi
+          echo "::endgroup::"
+
+      - name: Upload .rej files as artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: patch-rejects
+          path: '**/*.rej'            
             
       - name: Create Bootimgs Folder and Copy Images
         if: ${{ inputs.android_version == 'android12' || inputs.android_version == 'android13' }}

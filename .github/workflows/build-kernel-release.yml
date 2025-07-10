@@ -55,7 +55,7 @@ jobs:
       REPO_OWNER: RiRiRawrZ615
       REPO_NAME: Vermeer_GKI_KernelSU_SUSFS
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} & SUSFS v1.5.7 *VERMEER BUILD*"
+      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} & SUSFS v1.5.9 *VERMEER BUILD*"
       RELEASE_NOTES: |
         This release contains KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} and SUSFS v1.5.9
         
@@ -64,14 +64,10 @@ jobs:
         -> SUSFS ඞ v1.5.9 
         -> Manual Hooks
         -> Wireguard Support
-        -> Simple Maphide for LineageOS Detections
-        -> Futile Maphide for jit-zygote-cache Detections
-        -> Magic Mount Support
-        -> BBR Support
+      
 
         Notes:
-        -> SUS SU Mode 2 will show as disabled or not compatble due to non-kprobe hooks and is not needed anymore!
-        -> Kernel Flasher is broken with latest susfs, try https://github.com/libxzr/HorizonKernelFlasher!
+        This is a MODIFIED kernel only meant for VERMEER devices a.k.a Redmi K70 / Poco F6 Pro, running on HyperOS 1.0.6. if you do not have this device please do not flash this.
 
         Module: 
         -> https://github.com/sidex15/ksu_module_susfs

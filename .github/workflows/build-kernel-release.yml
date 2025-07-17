@@ -13,21 +13,15 @@ on:
         type: boolean
         default: true
       kernelsu_variant:
-        description: "Choose KernelSU"
+        description: "Choose KernelSU (must be 'Next')"
         required: true
-        type: choice
-        options:
-          - Next
-        default: Next
+        type: string
+        default: "Next"
       kernelsu_branch:
-        description: "Choose ksu branch"
+        description: "Choose ksu branch (must be 'Stable', 'Dev', or 'Other')"
         required: true
-        type: choice
-        options:
-          - Stable
-          - Dev
-          - Other
-        default: Dev
+        type: string
+        default: "Dev"
       kernelsu_branch_other:
         description: "If 'Other' is selected, specify your custom branch"
         required: false
@@ -86,9 +80,21 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Determine the branch for KernelSU-${{ inputs.kernelsu_variant }}
-        if: ${{ inputs.kernelsu_branch == 'Dev' }}
+      - name: Validate inputs and determine the branch for KernelSU-${{ inputs.kernelsu_variant }}
         run: |
+          # Validate kernelsu_variant
+          if [ "${{ inputs.kernelsu_variant }}" != "Next" ]; then
+            echo "Error: kernelsu_variant must be 'Next'" >&2
+            exit 1
+          fi
+
+          # Validate kernelsu_branch
+          VALID_BRANCHES=("Stable" "Dev" "Other")
+          if [[ ! " ${VALID_BRANCHES[@]} " =~ " ${{ inputs.kernelsu_branch }} " ]]; then
+            echo "Error: kernelsu_branch must be 'Stable', 'Dev', or 'Other'" >&2
+            exit 1
+          fi
+
           # Determine the branch based on user input
           if [[ "${{ inputs.kernelsu_branch }}" == "Dev" ]]; then
             BRANCH="next"

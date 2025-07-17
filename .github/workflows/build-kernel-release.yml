@@ -12,6 +12,11 @@ on:
         required: true
         type: boolean
         default: true
+      test_release:
+        description: 'Trigger a test release (skips build, uses dummy values)?'
+        required: true
+        type: boolean
+        default: false
       kernelsu_variant:
         description: "Choose KernelSU (must be 'Next')"
         required: true
@@ -39,6 +44,8 @@ on:
 
 jobs:
   build-kernel-a13-5-15:
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.test_release }}  # Skip build job if test_release is true
     uses: ./.github/workflows/kernel-a13-5.15.yml
     secrets: inherit
     with:
@@ -107,16 +114,21 @@ jobs:
           echo "KernelSU Reference: $KSU_REF"
           echo "KernelSU URL: $KSU_URL"
 
-      - name: Detect KernelSU Next Main and Subversion
+      - name: Detect KernelSU Next Main and Subversion or Use Dummy Values
         run: |
-          KSU_VERSION=$(git ls-remote --tags $REPO_URL | grep -o 'v[0-9]*\.[0-9]*\.[0-9]*' | sort -V | tail -n1)
-          KSU_MAIN_VERSION=$(echo $KSU_VERSION | cut -d'.' -f1-2 | sed 's/v//')
-          KSU_SUB_VERSION=$(git ls-remote --tags $REPO_URL | grep -o 'v[0-9]*\.[0-9]*\.[0-9]*-[0-9]*' | sort -V | tail -n1 | grep -o '[0-9]*$' || echo "0")
-          # Increment sub-version if needed (simplified increment for demonstration)
-          KSU_SUB_VERSION=$((KSU_SUB_VERSION + 1))
-          echo "KSU_MAIN_VERSION=$KSU_MAIN_VERSION" >> $GITHUB_ENV
-          echo "KSU_SUB_VERSION=$KSU_SUB_VERSION" >> $GITHUB_ENV
-          echo "Detected KernelSU Next Version: $KSU_MAIN_VERSION.$KSU_SUB_VERSION"
+          if [ "${{ inputs.test_release }}" == "true" ]; then
+            echo "Using dummy values for test release..."
+            echo "KSU_MAIN_VERSION=1.5.9" >> $GITHUB_ENV
+            echo "KSU_SUB_VERSION=12798" >> $GITHUB_ENV
+          else
+            KSU_VERSION=$(git ls-remote --tags $REPO_URL | grep -o 'v[0-9]*\.[0-9]*\.[0-9]*' | sort -V | tail -n1)
+            KSU_MAIN_VERSION=$(echo $KSU_VERSION | cut -d'.' -f1-2 | sed 's/v//')
+            KSU_SUB_VERSION=$(git ls-remote --tags $REPO_URL | grep -o 'v[0-9]*\.[0-9]*\.[0-9]*-[0-9]*' | sort -V | tail -n1 | grep -o '[0-9]*$' || echo "0")
+            KSU_SUB_VERSION=$((KSU_SUB_VERSION + 1))
+            echo "KSU_MAIN_VERSION=$KSU_MAIN_VERSION" >> $GITHUB_ENV
+            echo "KSU_SUB_VERSION=$KSU_SUB_VERSION" >> $GITHUB_ENV
+            echo "Detected KernelSU Next Version: $KSU_MAIN_VERSION.$KSU_SUB_VERSION"
+          fi
 
       - name: Get commit hashes and generate commit URLs
         run: |
@@ -142,20 +154,26 @@ jobs:
             fi
           done
 
-      - name: Detect SUSFS Version
+      - name: Detect SUSFS Version or Use Dummy Value
         run: |
-          SUSFS_VERSION=${{ inputs.susfs_version }}
-          echo "Detected SUSFS Version: $SUSFS_VERSION"
+          if [ "${{ inputs.test_release }}" == "true" ]; then
+            echo "Using dummy SUSFS version for test release..."
+            echo "SUSFS_VERSION=v1.5.9" >> $GITHUB_ENV
+          else
+            SUSFS_VERSION=${{ inputs.susfs_version }}
+            echo "Detected SUSFS Version: $SUSFS_VERSION"
+            echo "SUSFS_VERSION=$SUSFS_VERSION" >> $GITHUB_ENV
+          fi
 
       - name: Construct Release Information
         run: |
-          echo "RELEASE_NAME=*VERMEER BUILD* GKI Kernels With KernelSU-**\${{ env.KSU_MAIN_VERSION }}.\${{ env.KSU_SUB_VERSION }}** & SUSFS **\${{ inputs.susfs_version }}** *VERMEER BUILD*" >> $GITHUB_ENV
+          echo "RELEASE_NAME=*VERMEER BUILD* GKI Kernels With KernelSU-**\${{ env.KSU_MAIN_VERSION }}.\${{ env.KSU_SUB_VERSION }}** & SUSFS **\${{ env.SUSFS_VERSION }}** *VERMEER BUILD*" >> $GITHUB_ENV
           echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
-          echo "This release contains KernelSU-**\${{ env.KSU_MAIN_VERSION }}.\${{ env.KSU_SUB_VERSION }}** (${{ inputs.kernelsu_branch }}) and SUSFS **\${{ inputs.susfs_version }}**" >> $GITHUB_ENV
+          echo "This release contains KernelSU-**\${{ env.KSU_MAIN_VERSION }}.\${{ env.KSU_SUB_VERSION }}** (${{ inputs.kernelsu_branch }}) and SUSFS **\${{ env.SUSFS_VERSION }}**" >> $GITHUB_ENV
           echo "" >> $GITHUB_ENV
           echo "Features:" >> $GITHUB_ENV
           echo "-> KernelSU-${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }} **\${{ env.KSU_MAIN_VERSION }}.\${{ env.KSU_SUB_VERSION }}**" >> $GITHUB_ENV
-          echo "-> SUSFS **\${{ inputs.susfs_version }}**" >> $GITHUB_ENV
+          echo "-> SUSFS **\${{ env.SUSFS_VERSION }}**" >> $GITHUB_ENV
           echo "-> Manual Hooks" >> $GITHUB_ENV
           echo "-> Wireguard Support" >> $GITHUB_ENV
           echo "" >> $GITHUB_ENV
@@ -207,29 +225,26 @@ jobs:
             git tag $NEW_TAG
             git push --tags
 
-      # Download Artifacts
-      - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: ./downloaded-artifacts
-          
-      # Rename and Prepare Files
-      - name: Rename Files
+      # Download Artifacts or Create Dummy Files
+      - name: Download Artifacts or Create Dummy Files
         run: |
-          KSU_VERSION="${{ env.KSU_MAIN_VERSION }}"
-          KSU_SUB_VERSION="${{ env.KSU_SUB_VERSION }}"
-          SUSFS_VERSION="${{ inputs.susfs_version }}"
-          NEW_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
-          
-          # Rename zip file
-          mv ./downloaded-artifacts/kernel-a13-5-15/gs101.zip ./downloaded-artifacts/$NEW_NAME.zip
-          
-          # Rename Image.lz4 to boot.img (assuming it's the boot image)
-          mv ./downloaded-artifacts/kernel-a13-5-15/Image.lz4 ./downloaded-artifacts/$NEW_NAME-boot.img
-          
-          # Optionally rename dtbo.img if present
-          if [ -f ./downloaded-artifacts/kernel-a13-5-15/dtbo.img ]; then
-            mv ./downloaded-artifacts/kernel-a13-5-15/dtbo.img ./downloaded-artifacts/$NEW_NAME-dtbo.img
+          if [ "${{ inputs.test_release }}" == "true" ]; then
+            echo "Creating dummy files for test release..."
+            mkdir -p ./downloaded-artifacts
+            KSU_VERSION="${{ env.KSU_MAIN_VERSION }}"
+            KSU_SUB_VERSION="${{ env.KSU_SUB_VERSION }}"
+            SUSFS_VERSION="${{ env.SUSFS_VERSION }}"
+            NEW_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
+            touch ./downloaded-artifacts/$NEW_NAME.zip
+            touch ./downloaded-artifacts/$NEW_NAME-boot.img
+            if [ -f ./downloaded-artifacts/$NEW_NAME-dtbo.img ]; then
+              touch ./downloaded-artifacts/$NEW_NAME-dtbo.img
+            fi
+          else
+            echo "Downloading artifacts..."
+            uses: actions/download-artifact@v4
+            with:
+              path: ./downloaded-artifacts
           fi
 
       # Create GitHub Release and upload files if make_release is true

@@ -24,18 +24,12 @@ on:
         type: string
       kernelsu_variant:
         required: true
-        type: choice
-        options:
-          - Next
-        default: Next
+        type: string
+        default: "Next"
       kernelsu_branch:
         required: true
-        type: choice
-        options:
-          - Stable
-          - Dev
-          - Other
-        default: Dev
+        type: string
+        default: "Dev"
       kernelsu_branch_other:
         required: false
         type: string
@@ -70,6 +64,21 @@ jobs:
           remove-android: "true"
           remove-haskell: "true"
           remove-codeql: "true"
+
+      - name: Validate inputs
+        run: |
+          # Validate kernelsu_variant
+          if [ "${{ inputs.kernelsu_variant }}" != "Next" ]; then
+            echo "Error: kernelsu_variant must be 'Next'" >&2
+            exit 1
+          fi
+
+          # Validate kernelsu_branch
+          VALID_BRANCHES=("Stable" "Dev" "Other")
+          if [[ ! " ${VALID_BRANCHES[@]} " =~ " ${{ inputs.kernelsu_branch }} " ]]; then
+            echo "Error: kernelsu_branch must be 'Stable', 'Dev', or 'Other'" >&2
+            exit 1
+          fi
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -352,7 +361,7 @@ jobs:
           echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig 
+          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
 
 
       - name: Config Kernel Name

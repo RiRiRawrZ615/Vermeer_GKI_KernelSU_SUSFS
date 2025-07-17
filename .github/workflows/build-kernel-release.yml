@@ -1,0 +1,239 @@
+name: Build and Release GKI Kernels
+
+permissions:
+  contents: write  # Allow writing to repository contents (for pushing tags)
+  actions: write   # Allows triggering actions
+  
+on:
+  workflow_dispatch:
+    inputs:
+      make_release:
+        description: 'Do you want to create a release?'
+        required: true
+        type: boolean
+        default: true
+      kernelsu_variant:
+        description: "Choose KernelSU"
+        required: true
+        type: choice
+        options:
+          - Next
+        default: Next
+      kernelsu_branch:
+        description: "Choose ksu branch"
+        required: true
+        type: choice
+        options:
+          - Stable
+          - Dev
+          - Other
+        default: Dev
+      kernelsu_branch_other:
+        description: "If 'Other' is selected, specify your custom branch"
+        required: false
+        type: string
+        default: ""
+      kernelsu_commit_hash:
+        description: "Specify the GitHub commit hash for KernelSU Next (e.g., 3fd61e0ee5ee5e6fe941a892924ac26aa752b618)"
+        required: true
+        type: string
+      susfs_version:
+        description: "Specify the SUSFS version"
+        required: true
+        type: string
+        default: "v1.5.9"
+
+jobs:
+  build-kernel-a13-5-15:
+    uses: ./.github/workflows/kernel-a13-5.15.yml
+    secrets: inherit
+    with:
+      make_release: ${{ inputs.make_release }}
+      kernelsu_variant: ${{ inputs.kernelsu_variant }}
+      kernelsu_branch: ${{ inputs.kernelsu_branch }}
+      kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
+      kernelsu_commit_hash: ${{ inputs.kernelsu_commit_hash }}
+      susfs_version: ${{ inputs.susfs_version }}
+      
+  trigger-release:
+    runs-on: ubuntu-latest
+    needs:
+        - build-kernel-a13-5-15
+    if: ${{ inputs.make_release }}
+    env:
+      REPO_OWNER: RiRiRawrZ615
+      REPO_NAME: Vermeer_GKI_KernelSU_SUSFS
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} & SUSFS ${{ inputs.susfs_version }} *VERMEER BUILD*"
+      RELEASE_NOTES: |
+        This release contains KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} and SUSFS ${{ inputs.susfs_version }}
+        
+        Features:
+        -> KernelSU-${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }}
+        -> SUSFS ${{ inputs.susfs_version }}
+        -> Manual Hooks
+        -> Wireguard Support
+      
+
+        Notes:
+        This is a MODIFIED kernel only meant for VERMEER devices a.k.a Redmi K70 / Poco F6 Pro, running on HyperOS 1.0.6. if you do not have this device please do not flash this.
+
+        Module: 
+        -> https://github.com/sidex15/ksu_module_susfs
+        
+    steps:
+      # Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Determine the branch for KernelSU-${{ inputs.kernelsu_variant }}
+        if: ${{ inputs.kernelsu_branch == 'Dev' }}
+        run: |
+          # Determine the branch based on user input
+          if [[ "${{ inputs.kernelsu_branch }}" == "Dev" ]]; then
+            BRANCH="next"
+          elif [[ "${{ inputs.kernelsu_branch }}" == "Other" && -n "${{ inputs.kernelsu_branch_other }}" ]]; then
+            BRANCH="${{ inputs.kernelsu_branch_other }}"
+          else
+            echo "Error: Custom branch not provided for 'Other'" >&2
+            exit 1
+          fi
+
+          # Store the selected branch in GITHUB_ENV
+          echo "KSU_BRANCH=$BRANCH" >> $GITHUB_ENV
+
+      - name: Get commit hash or tag and generate URL for KernelSU-${{ inputs.kernelsu_variant }}
+        run: |
+          echo "This is the Next variant"
+          REPO_URL="https://github.com/KernelSU-Next/KernelSU-Next.git"
+          REPO_URL2="KernelSU-Next/KernelSU-Next"
+          
+          # Use the provided commit hash
+          KSU_REF=${{ inputs.kernelsu_commit_hash }}
+          KSU_URL="https://github.com/$REPO_URL2/commit/$KSU_REF"
+
+          # Echo the values to GitHub environment for later use
+          echo "KSU_REF=$KSU_REF" >> $GITHUB_ENV
+          echo "KSU_URL=$KSU_URL" >> $GITHUB_ENV
+          echo "KernelSU Reference: $KSU_REF"
+          echo "KernelSU URL: $KSU_URL"
+
+      - name: Detect KernelSU Next Main and Subversion
+        run: |
+          KSU_VERSION=$(git ls-remote --tags $REPO_URL | grep -o 'v[0-9]*\.[0-9]*\.[0-9]*' | sort -V | tail -n1)
+          KSU_MAIN_VERSION=$(echo $KSU_VERSION | cut -d'.' -f1-2)
+          KSU_SUB_VERSION=$(echo $KSU_VERSION | cut -d'.' -f3)
+          echo "KSU_MAIN_VERSION=$KSU_MAIN_VERSION" >> $GITHUB_ENV
+          echo "KSU_SUB_VERSION=$KSU_SUB_VERSION" >> $GITHUB_ENV
+          echo "Detected KernelSU Next Version: $KSU_MAIN_VERSION.$KSU_SUB_VERSION"
+
+      - name: Get commit hashes and generate commit URLs
+        run: |
+          GITLAB_OWNER="simonpunk"
+          GITLAB_REPO="susfs4ksu"
+
+          declare -A BRANCH_MAP=(
+            ["gki_android13_5_15"]="gki-android13-5.15"
+          )
+
+          for var_name in "${!BRANCH_MAP[@]}"; do
+            branch_name="${BRANCH_MAP[$var_name]}"
+            COMMIT_HASH=$(git ls-remote https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO.git refs/heads/$branch_name | awk '{ print $1 }')
+
+            if [[ -n "$COMMIT_HASH" ]]; then
+              COMMIT_URL="https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO/-/commit/$COMMIT_HASH"
+              echo "$branch_name Commit: $COMMIT_HASH"
+              echo "$branch_name Commit URL: $COMMIT_URL"
+
+              # Store commit hash and commit URL in GitHub environment
+              echo "COMMIT_HASH_${var_name}=$COMMIT_HASH" >> "$GITHUB_ENV"
+              echo "COMMIT_URL_${var_name}=$COMMIT_URL" >> $GITHUB_ENV
+            fi
+          done
+
+      - name: Detect SUSFS Version
+        run: |
+          SUSFS_VERSION=${{ inputs.susfs_version }}
+          echo "Detected SUSFS Version: $SUSFS_VERSION"
+
+      - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU-Next Reference to `RELEASE_NOTES`
+        run: |
+          echo "This is the Next variant"
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
+          echo "$RELEASE_NOTES" >> $GITHUB_ENV
+          echo "Next Manager:" >> $GITHUB_ENV
+          echo "-> https://github.com/KernelSU-Next/KernelSU-Next" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          
+      - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU-Next Reference to `RELEASE_NOTES`
+        run: |
+          echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
+          echo "$RELEASE_NOTES" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "LTO: thin" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "Commit Hashes and Links:" >> $GITHUB_ENV
+          echo "KernelSU:" >> $GITHUB_ENV
+          echo "${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }}: [$KSU_REF]($KSU_URL)" >> $GITHUB_ENV
+          echo "SUSFS4KSU:" >> $GITHUB_ENV
+          echo "gki-android13-5.15: [$COMMIT_HASH_gki_android13_5_15]($COMMIT_URL_gki_android13_5_15)" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          
+      # Get the Latest Tag from GitHub
+      - name: Generate and Create New Tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+            # Fetch the latest tag from GitHub (this is the latest tag based on the GitHub API)
+            LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
+            if [ -z "$LATEST_TAG" ]; then
+              LATEST_TAG="v1.5.7-r0"
+            fi
+            
+            NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
+            
+            # Output the new tag to be used
+            echo "New tag: $NEW_TAG"
+            
+            # Set the new tag as an environment variable to be used in later steps
+            echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
+            
+            # Create the tag in the repository
+            git tag $NEW_TAG
+            git push --tags
+
+      # Download Artifacts for A12 (Only if A12 Build is successful or input is true or empty)
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./downloaded-artifacts
+          
+      # Create GitHub Release and upload files if make_release is true
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ env.NEW_TAG }}  # Use the generated tag for the release
+          prerelease: true  # Mark the release as a pre-release
+          release_name: ${{ env.RELEASE_NAME }}  # Pass the RELEASE_NAME to the action
+          body: ${{ env.RELEASE_NOTES }}  # Pass the RELEASE_NOTES to the action
+
+      - name: Upload Release Assets Dynamically
+        run: |
+          # Loop through all files in the downloaded-artifacts directory
+          for file in ./downloaded-artifacts/kernel-*/*; do
+              # Skip directories
+              if [ -d "$file" ]; then
+                  continue
+              fi
+
+              # Upload the file to the GitHub release
+              echo "Uploading $file..."
+              gh release upload ${{ env.NEW_TAG }} "$file"
+          done
+
+      # Display Files Uploaded
+      - name: Display Files Uploaded
+        run: |
+          echo "GitHub release created with the following files:"
+          ls ./downloaded-artifacts/**/*

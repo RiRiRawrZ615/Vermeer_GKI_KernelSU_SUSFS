@@ -221,6 +221,9 @@ jobs:
           elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
             echo "Adding KernelSU Next..."
             curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+            cd KernelSU-Next
+            git checkout 3fd61e0ee5ee5e6fe941a892924ac26aa752b618
+            cd ..
           elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "Adding KernelSU MKSU..."
             curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash $BRANCH
@@ -262,9 +265,7 @@ jobs:
               cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
               patch -p1 --forward --fuzz=3 < fix_rules.c.patch
               cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch  ./
-              patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_kernel_compat.c.patch              
+              patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch             
               ;;
               
             "MKSU")

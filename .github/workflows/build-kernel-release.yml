@@ -95,9 +95,8 @@ jobs:
 
   trigger-release:
     runs-on: ubuntu-latest
-    needs:
-        - build-kernel-a13-5-15
     if: ${{ inputs.make_release }}
+    needs: ${{ !inputs.test_release && 'build-kernel-a13-5-15' || '' }}  # Only depend on build job if not test_release
     env:
       REPO_OWNER: RiRiRawrZ615
       REPO_NAME: Vermeer_GKI_KernelSU_SUSFS

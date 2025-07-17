@@ -58,23 +58,6 @@ jobs:
       REPO_OWNER: RiRiRawrZ615
       REPO_NAME: Vermeer_GKI_KernelSU_SUSFS
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-**${{ env.KSU_MAIN_VERSION }}.${{ env.KSU_SUB_VERSION }}** & SUSFS **${{ inputs.susfs_version }}** *VERMEER BUILD*"
-      RELEASE_NOTES: |
-        This release contains KernelSU-**${{ env.KSU_MAIN_VERSION }}.${{ env.KSU_SUB_VERSION }}** (${{ inputs.kernelsu_branch }}) and SUSFS **${{ inputs.susfs_version }}**
-        
-        Features:
-        -> KernelSU-${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }} **${{ env.KSU_MAIN_VERSION }}.${{ env.KSU_SUB_VERSION }}**
-        -> SUSFS **${{ inputs.susfs_version }}**
-        -> Manual Hooks
-        -> Wireguard Support
-      
-
-        Notes:
-        This is a MODIFIED kernel only meant for VERMEER devices a.k.a Redmi K70 / Poco F6 Pro, running on HyperOS 1.0.6. if you do not have this device please do not flash this.
-
-        Module: 
-        -> https://github.com/sidex15/ksu_module_susfs
-        
     steps:
       # Checkout the code
       - name: Checkout code
@@ -162,19 +145,29 @@ jobs:
           SUSFS_VERSION=${{ inputs.susfs_version }}
           echo "Detected SUSFS Version: $SUSFS_VERSION"
 
-      - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU-Next Reference to `RELEASE_NOTES`
+      - name: Construct Release Information
         run: |
-          echo "This is the Next variant"
+          echo "RELEASE_NAME=*VERMEER BUILD* GKI Kernels With KernelSU-**\${{ env.KSU_MAIN_VERSION }}.${{ env.KSU_SUB_VERSION }}** & SUSFS **\${{ inputs.susfs_version }}** *VERMEER BUILD*" >> $GITHUB_ENV
           echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
-          echo "$RELEASE_NOTES" >> $GITHUB_ENV
-          echo "Next Manager:" >> $GITHUB_ENV
-          echo "-> https://github.com/KernelSU-Next/KernelSU-Next" >> $GITHUB_ENV
+          echo "This release contains KernelSU-**\${{ env.KSU_MAIN_VERSION }}.${{ env.KSU_SUB_VERSION }}** (${{ inputs.kernelsu_branch }}) and SUSFS **\${{ inputs.susfs_version }}**" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "Features:" >> $GITHUB_ENV
+          echo "-> KernelSU-${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }} **\${{ env.KSU_MAIN_VERSION }}.${{ env.KSU_SUB_VERSION }}**" >> $GITHUB_ENV
+          echo "-> SUSFS **\${{ inputs.susfs_version }}**" >> $GITHUB_ENV
+          echo "-> Manual Hooks" >> $GITHUB_ENV
+          echo "-> Wireguard Support" >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "Notes:" >> $GITHUB_ENV
+          echo "This is a MODIFIED kernel only meant for VERMEER devices a.k.a Redmi K70 / Poco F6 Pro, running on HyperOS 1.0.6. if you do not have this device please do not flash this." >> $GITHUB_ENV
+          echo "" >> $GITHUB_ENV
+          echo "Module:" >> $GITHUB_ENV
+          echo "-> https://github.com/sidex15/ksu_module_susfs" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
-          
+
       - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU-Next Reference to `RELEASE_NOTES`
         run: |
           echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
-          echo "$RELEASE_NOTES" >> $GITHUB_ENV
+          echo "${{ env.RELEASE_NOTES }}" >> $GITHUB_ENV
           echo "" >> $GITHUB_ENV
           echo "LTO: thin" >> $GITHUB_ENV
           echo "" >> $GITHUB_ENV

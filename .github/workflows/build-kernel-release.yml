@@ -58,13 +58,13 @@ jobs:
       REPO_OWNER: RiRiRawrZ615
       REPO_NAME: Vermeer_GKI_KernelSU_SUSFS
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} & SUSFS ${{ inputs.susfs_version }} *VERMEER BUILD*"
+      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-**${{ env.KSU_MAIN_VERSION }}.${{ env.KSU_SUB_VERSION }}** & SUSFS **${{ inputs.susfs_version }}** *VERMEER BUILD*"
       RELEASE_NOTES: |
-        This release contains KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} and SUSFS ${{ inputs.susfs_version }}
+        This release contains KernelSU-**${{ env.KSU_MAIN_VERSION }}.${{ env.KSU_SUB_VERSION }}** (${{ inputs.kernelsu_branch }}) and SUSFS **${{ inputs.susfs_version }}**
         
         Features:
-        -> KernelSU-${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }}
-        -> SUSFS ${{ inputs.susfs_version }}
+        -> KernelSU-${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }} **${{ env.KSU_MAIN_VERSION }}.${{ env.KSU_SUB_VERSION }}**
+        -> SUSFS **${{ inputs.susfs_version }}**
         -> Manual Hooks
         -> Wireguard Support
       
@@ -127,8 +127,8 @@ jobs:
       - name: Detect KernelSU Next Main and Subversion
         run: |
           KSU_VERSION=$(git ls-remote --tags $REPO_URL | grep -o 'v[0-9]*\.[0-9]*\.[0-9]*' | sort -V | tail -n1)
-          KSU_MAIN_VERSION=$(echo $KSU_VERSION | cut -d'.' -f1-2)
-          KSU_SUB_VERSION=$(echo $KSU_VERSION | cut -d'.' -f3)
+          KSU_MAIN_VERSION=$(echo $KSU_VERSION | cut -d'.' -f1-2 | sed 's/v//')
+          KSU_SUB_VERSION=$(git ls-remote --tags $REPO_URL | grep -o 'v[0-9]*\.[0-9]*\.[0-9]*-[0-9]*' | sort -V | tail -n1 | grep -o '[0-9]*$' || echo "0")
           echo "KSU_MAIN_VERSION=$KSU_MAIN_VERSION" >> $GITHUB_ENV
           echo "KSU_SUB_VERSION=$KSU_SUB_VERSION" >> $GITHUB_ENV
           echo "Detected KernelSU Next Version: $KSU_MAIN_VERSION.$KSU_SUB_VERSION"
@@ -194,10 +194,18 @@ jobs:
             # Fetch the latest tag from GitHub (this is the latest tag based on the GitHub API)
             LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
             if [ -z "$LATEST_TAG" ]; then
-              LATEST_TAG="v1.5.7-r0"
+              LATEST_TAG="v${{ inputs.susfs_version }}-r0"
             fi
             
-            NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
+            # Extract the base SUSFS version and increment the release number
+            BASE_VERSION=$(echo "$LATEST_TAG" | sed -E 's/v([0-9]+\.[0-9]+\.[0-9]+)-r[0-9]+/\1/')
+            if [ "$BASE_VERSION" != "${{ inputs.susfs_version }}" ]; then
+              RELEASE_NUM=0
+            else
+              RELEASE_NUM=$(echo "$LATEST_TAG" | sed -E 's/v[0-9]+\.[0-9]+\.[0-9]+-r([0-9]+)/\1/')
+              RELEASE_NUM=$((RELEASE_NUM + 1))
+            fi
+            NEW_TAG="v${{ inputs.susfs_version }}-r$RELEASE_NUM"
             
             # Output the new tag to be used
             echo "New tag: $NEW_TAG"

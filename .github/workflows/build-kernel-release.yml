@@ -45,17 +45,54 @@ on:
 jobs:
   build-kernel-a13-5-15:
     runs-on: ubuntu-latest
-    if: ${{ !inputs.test_release }}  # Skip this job if test_release is true
-    uses: ./.github/workflows/kernel-a13-5.15.yml
-    secrets: inherit
-    with:
-      make_release: ${{ inputs.make_release }}
-      kernelsu_variant: ${{ inputs.kernelsu_variant }}
-      kernelsu_branch: ${{ inputs.kernelsu_branch }}
-      kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
-      kernelsu_commit_hash: ${{ inputs.kernelsu_commit_hash }}
-      susfs_version: ${{ inputs.susfs_version }}
-      
+    if: ${{ !inputs.test_release }}  # Skip build job if test_release is true
+    steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 8192
+          temp-reserve-mb: 2048
+          swap-size-mb: 8192
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+
+      - name: Installing dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y gcc-aarch64-linux-gnu
+
+      - name: Clone Kernel Source and Dependencies
+        run: |
+          git clone https://github.com/RiRiRawrZ615/Vermeer_GKI_KernelSU_SUSFS -b main
+          cd Vermeer_GKI_KernelSU_SUSFS
+          # Add KernelSU and SUSFS integration steps here (simplified)
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          cd KernelSU-Next
+          git checkout ${{ inputs.kernelsu_commit_hash }}
+          cd ..
+          # Placeholder for SUSFS and build steps (to be expanded based on kernel-a13-5.15.yml)
+
+      - name: Build Kernel
+        run: |
+          cd Vermeer_GKI_KernelSU_SUSFS
+          # Simplified build command (replace with actual build steps)
+          make -j$(nproc --all)
+
+      - name: Package Artifacts
+        run: |
+          mkdir -p ./artifacts
+          cp Vermeer_GKI_KernelSU_SUSFS/out/arch/arm64/boot/Image.lz4 ./artifacts/Image.lz4
+          cp Vermeer_GKI_KernelSU_SUSFS/AnyKernel3/gs101.zip ./artifacts/gs101.zip
+          # Add dtbo.img if applicable
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-a13-5-15
+          path: ./artifacts/
+
   trigger-release:
     runs-on: ubuntu-latest
     needs:
@@ -244,7 +281,29 @@ jobs:
             echo "Downloading artifacts..."
             uses: actions/download-artifact@v4
             with:
+              name: kernel-a13-5-15
               path: ./downloaded-artifacts
+          fi
+
+      # Rename and Prepare Files
+      - name: Rename Files
+        run: |
+          if [ "${{ inputs.test_release }}" != "true" ]; then
+            KSU_VERSION="${{ env.KSU_MAIN_VERSION }}"
+            KSU_SUB_VERSION="${{ env.KSU_SUB_VERSION }}"
+            SUSFS_VERSION="${{ env.SUSFS_VERSION }}"
+            NEW_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
+            
+            # Rename zip file
+            mv ./downloaded-artifacts/gs101.zip ./downloaded-artifacts/$NEW_NAME.zip
+            
+            # Rename Image.lz4 to boot.img
+            mv ./downloaded-artifacts/Image.lz4 ./downloaded-artifacts/$NEW_NAME-boot.img
+            
+            # Optionally rename dtbo.img if present
+            if [ -f ./downloaded-artifacts/dtbo.img ]; then
+              mv ./downloaded-artifacts/dtbo.img ./downloaded-artifacts/$NEW_NAME-dtbo.img
+            fi
           fi
 
       # Create GitHub Release and upload files if make_release is true

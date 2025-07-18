@@ -305,11 +305,16 @@ jobs:
         run: |
           cd "$CONFIG"
           mkdir bootimgs
-          cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./bootimgs
-          cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./bootimgs
-          cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./
-          cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./
-          gzip -n -k -f -9 ./Image > ./Image.gz
+          if [ -f "./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image" ]; then
+            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image ./bootimgs/
+            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image.lz4 ./bootimgs/
+            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image ./
+            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image.lz4 ./
+            gzip -n -k -f -9 ./Image > ./Image.gz
+          else
+            echo "Error: Kernel Image not found in expected location!"
+            exit 1
+          fi
 
       - name: Create ZIP Files for Different Formats
         run: |

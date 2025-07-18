@@ -305,11 +305,11 @@ jobs:
         run: |
           cd "$CONFIG"
           mkdir bootimgs
-          if [ -f "./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image" ]; then
-            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image ./bootimgs/
-            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image.lz4 ./bootimgs/
-            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image ./
-            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/arch/arm64/boot/Image.lz4 ./
+          if [ -f "./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image" ]; then
+            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./bootimgs/
+            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./bootimgs/
+            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./
+            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./
             gzip -n -k -f -9 ./Image > ./Image.gz
           else
             echo "Error: Kernel Image not found in expected location!"

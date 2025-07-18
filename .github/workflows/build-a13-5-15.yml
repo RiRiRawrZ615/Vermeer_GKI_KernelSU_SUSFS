@@ -149,9 +149,7 @@ jobs:
         run: |
           if [ "${{ inputs.kernelsu_branch }}" == "Stable" ]; then
             echo "BRANCH=-" >> $GITHUB_ENV
-          elif [ "${{ inputs.kernelsu_branch }}" == "Dev" ] && [ "${{ inputs.kernelsu_variant }}" == "Official" ] || [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "BRANCH=-s main" >> $GITHUB_ENV
-          elif [ "${{ inputs.kernelsu_branch }}" == "Dev" ] && [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
+          elif [ "${{ inputs.kernelsu_branch }}" == "Dev" ]; then
             echo "BRANCH=-s next" >> $GITHUB_ENV
           elif [ "${{ inputs.kernelsu_branch }}" == "Other" ] && [ -n "${{ inputs.kernelsu_branch_other }}" ]; then
             echo "BRANCH=-s ${{ inputs.kernelsu_branch_other }}" >> $GITHUB_ENV
@@ -163,18 +161,10 @@ jobs:
       - name: Add KernelSU
         run: |
           cd "$CONFIG"
-          if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
-            echo "Adding KernelSU Official..."
-            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash $BRANCH
-          elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-            echo "Adding KernelSU Next..."
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "Adding KernelSU MKSU..."
-            curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash $BRANCH
-          fi
+          echo "Adding KernelSU Next..."
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
 
-      - name: Apply SUSFS Patches for KernelSU Variants
+      - name: Apply SUSFS Patches for KernelSU Next
         run: |
           cd "$CONFIG"
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
@@ -183,45 +173,31 @@ jobs:
           cd ..
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-          case "${{ inputs.kernelsu_variant }}" in
-            "Official")
-              echo "Applying SUSFS patches for Official KernelSU..."
-              cd ./KernelSU
-              cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch
-              ;;
-            "Next")
-              echo "Applying SUSFS patches for KernelSU Next..."
-              cd ./KernelSU-Next
-              cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_selinux.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_ksud.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_rules.c.patch
-              ;;
-            "MKSU")
-              echo "Applying SUSFS patches for MKSU..."
-              cd ./KernelSU
-              cp ../../kernel_patches/next/0001_susfs_157_for_ksunext.patch ./
-              patch -p1 --forward --fuzz=3 < 0001_susfs_157_for_ksunext.patch
-              ;;
-          esac
+          echo "Applying SUSFS patches for KernelSU Next..."
+          cd ./KernelSU-Next
+          cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+          patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_selinux.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_ksud.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_rules.c.patch
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_kernel_compat.c.patch
 
       - name: Apply Hooks Patches
         run: |
           cd "$CONFIG/common"
-          if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-            echo "Applying hooks for KernelSU-Next..."
-            cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
-            patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
-          fi
+          echo "Applying hooks for KernelSU-Next..."
+          cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
+          patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
 
       - name: Apply Hide Stuff Patches
         run: |
@@ -233,9 +209,7 @@ jobs:
         run: |
           cd "$CONFIG"
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-            echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
+          echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -251,11 +225,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-          if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-            echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
-          else
-            echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          fi
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -273,9 +243,11 @@ jobs:
 
       - name: Config Kernel Name
         run: |
+          echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
           perl -pi -e 's|echo "\$res"|echo "-android13-8-00008-g3ca6a2912c7e-ab11087001"|' ./common/scripts/setlocalversion
-          perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Nov 11 06:58:10 UTC 2023"}' ./common/scripts/mkcompile_h
+          perl -pi -e 's{UTS_VERSION="\$$$ echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN $$"}{UTS_VERSION="#1 SMP PREEMPT Sat Nov 11 06:58:10 UTC 2023"}' ./common/scripts/mkcompile_h
+          echo "Building the kernel..."
           if [ -f "build/build.sh" ]; then
             sed -i 's/-dirty//' ./common/scripts/setlocalversion
           else

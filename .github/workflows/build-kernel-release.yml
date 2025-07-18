@@ -3,7 +3,7 @@ name: Build and Release VERMEER Kernels
 permissions:
   contents: write
   actions: write
-  
+
 on:
   workflow_dispatch:
     inputs:
@@ -51,6 +51,11 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !inputs.test_release }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: dev  # Ensure the correct branch is checked out (change to 'main' if needed)
+
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -67,10 +72,8 @@ jobs:
           sudo apt update
           sudo apt install -y gcc-aarch64-linux-gnu
 
-      - name: Clone Kernel Source and Dependencies
+      - name: Setup KernelSU
         run: |
-          git clone https://github.com/RiRiRawrZ615/Vermeer_GKI_KernelSU_SUSFS -b main
-          cd Vermeer_GKI_KernelSU_SUSFS
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           cd KernelSU-Next
           if [ -z "${{ inputs.kernelsu_commit_hash }}" ]; then
@@ -82,14 +85,13 @@ jobs:
 
       - name: Build Kernel
         run: |
-          cd Vermeer_GKI_KernelSU_SUSFS
           make -j$(nproc --all)
 
       - name: Package Artifacts
         run: |
           mkdir -p ./artifacts
-          cp Vermeer_GKI_KernelSU_SUSFS/out/arch/arm64/boot/Image.lz4 ./artifacts/Image.lz4
-          cp Vermeer_GKI_KernelSU_SUSFS/AnyKernel3/gs101.zip ./artifacts/gs101.zip
+          cp out/arch/arm64/boot/Image.lz4 ./artifacts/Image.lz4
+          cp AnyKernel3/gs101.zip ./artifacts/gs101.zip
           # Explicitly don't copy dtbo.img
 
       - name: Upload Build Artifacts
@@ -107,7 +109,9 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4  # Updated to v4 for consistency
+        with:
+          ref: dev  # Ensure the correct branch is checked out (change to 'main' if needed)
 
       - name: Validate inputs and determine branch
         run: |

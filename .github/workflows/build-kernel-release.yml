@@ -347,8 +347,8 @@ jobs:
           GITLAB_REPO="susfs4ksu"
           COMMIT_HASH=$(git ls-remote https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO.git refs/heads/gki-android13-5.15 | awk '{ print $1 }')
           COMMIT_URL="https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO/-/commit/$COMMIT_HASH"
-          echo "COMMIT_HASH=$COMMIT_HASH" >> "$GITHUB_ENV"
-          echo "COMMIT_URL=$COMMIT_URL" >> "$GITHUB_ENV"
+          echo "COMMIT_HASH=$COMMIT_HASH" >> ${GITHUB_ENV}
+          echo "COMMIT_URL=$COMMIT_URL" >> ${GITHUB_ENV}
 
       - name: Detect SUSFS Version
         run: |

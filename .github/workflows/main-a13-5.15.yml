@@ -12,15 +12,6 @@ on:
         required: true
         type: boolean
         default: true
-      kernelsu_variant:
-        description: "Choose KernelSU Variant"
-        required: true
-        type: choice
-        options:
-          - Official
-          - Next
-          - MKSU
-        default: Next
       kernelsu_branch:
         description: "Choose ksu branch"
         required: true
@@ -53,28 +44,11 @@ jobs:
             [🔗 View GitHub Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
             -F parse_mode="Markdown"
 
-  set-matrix:
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - id: set-matrix
-        run: |
-          VARIANTS=()
-          VARIANTS+=("\"${{ inputs.kernelsu_variant }}\"")
-          echo "matrix={\"kernelsu_variant\": [$(IFS=,; echo "${VARIANTS[*]}")]}" >> $GITHUB_OUTPUT
-
   build-kernel-a13-5-15:
-    needs: set-matrix
     uses: ./.github/workflows/kernel-a13-5-15.yml
     secrets: inherit
-    strategy:
-      fail-fast: true
-      matrix: ${{ fromJson(needs.set-matrix.outputs.matrix) }}
     with:
       make_release: ${{ inputs.make_release }}
-      kernelsu_variant: ${{ matrix.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
       kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
 
@@ -86,31 +60,21 @@ jobs:
       REPO_OWNER: RiRiRawrZ615
       REPO_NAME: Vermeer_GKI_KernelSU_SUSFS
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} & SUSFS v1.5.9 *VERMEER BUILD*"
+      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-Next ${{ inputs.kernelsu_branch }} & SUSFS v1.5.9 *VERMEER BUILD*"
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Get commit hash or tag and generate URL for KernelSU
+      - name: Get commit hash or tag and generate URL for KernelSU-Next
         run: |
-          if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
-            REPO_URL="https://github.com/tiann/KernelSU.git"
-            REPO_URL2="tiann/KernelSU"
-          elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-            REPO_URL="https://github.com/KernelSU-Next/KernelSU-Next.git"
-            REPO_URL2="KernelSU-Next/KernelSU-Next"
-          elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            REPO_URL="https://github.com/5ec1cff/KernelSU.git"
-            REPO_URL2="5ec1cff/KernelSU"
-          fi
-
-          if [ "${{ inputs.kernelsu_branch }}" == "Stable" ] && [ "${{ inputs.kernelsu_variant }}" != "MKSU" ]; then
+          REPO_URL="https://github.com/KernelSU-Next/KernelSU-Next.git"
+          REPO_URL2="KernelSU-Next/KernelSU-Next"
+          if [ "${{ inputs.kernelsu_branch }}" == "Stable" ]; then
             TAG=$(git ls-remote --tags --sort=-v:refname $REPO_URL | grep -o 'refs/tags/.*' | cut -d'/' -f3 | head -n1)
             KSU_REF=$TAG
             KSU_URL="https://github.com/$REPO_URL2/releases/tag/$TAG"
-          elif [ "${{ inputs.kernelsu_branch }}" == "Dev" ] || [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            BRANCH=$([ "${{ inputs.kernelsu_variant }}" == "Next" ] && echo "next" || echo "main")
-            COMMIT_HASH=$(git ls-remote $REPO_URL refs/heads/$BRANCH | awk '{ print $1 }')
+          elif [ "${{ inputs.kernelsu_branch }}" == "Dev" ]; then
+            COMMIT_HASH=$(git ls-remote $REPO_URL refs/heads/next | awk '{ print $1 }')
             KSU_REF=$COMMIT_HASH
             KSU_URL="https://github.com/$REPO_URL2/commit/$COMMIT_HASH"
           elif [ "${{ inputs.kernelsu_branch }}" == "Other" ] && [ -n "${{ inputs.kernelsu_branch_other }}" ]; then
@@ -124,7 +88,7 @@ jobs:
               KSU_URL="https://github.com/$REPO_URL2/commit/$COMMIT_HASH"
             fi
           else
-            echo "Error: Invalid branch or variant configuration" >&2
+            echo "Error: Invalid branch configuration" >&2
             exit 1
           fi
           echo "KSU_REF=$KSU_REF" >> $GITHUB_ENV
@@ -152,7 +116,7 @@ jobs:
           fi
           NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
           echo "New tag: $NEW_TAG"
-          echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
           git tag $NEW_TAG
           git push origin $NEW_TAG
 
@@ -164,10 +128,10 @@ jobs:
       - name: Set release body
         run: |
           cat << 'EOF' > release_body.md
-          This release contains KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} and SUSFS v1.5.9
+          This release contains KernelSU-Next ${{ inputs.kernelsu_branch }} and SUSFS v1.5.9
 
           Features:
-          -> KernelSU-${{ inputs.kernelsu_variant }}-${{ inputs.kernelsu_branch }}
+          -> KernelSU-Next-${{ inputs.kernelsu_branch }}
           -> SUSFS v1.5.9
           -> Manual Hooks
           -> Wireguard Support
@@ -180,10 +144,10 @@ jobs:
           -> https://github.com/sidex15/ksu_module_susfs
 
           Managers:
-          -> ${{ inputs.kernelsu_variant == 'Official' && 'https://github.com/tiann/KernelSU' || inputs.kernelsu_variant == 'Next' && 'https://github.com/KernelSU-Next/KernelSU-Next' || 'https://github.com/5ec1cff/KernelSU' }}
+          -> https://github.com/KernelSU-Next/KernelSU-Next
 
           Commit Hashes (at the time of release):
-          -> KernelSU-${{ inputs.kernelsu_variant }}: [${{ env.KSU_REF }}](${{ env.KSU_URL }})
+          -> KernelSU-Next: [${{ env.KSU_REF }}](${{ env.KSU_URL }})
           -> SUSFS4KSU:
             -> gki-android13-5.15: [${{ env.COMMIT_HASH_gki_android13_5_15 }}](${{ env.COMMIT_URL_gki_android13_5_15 }})
           EOF

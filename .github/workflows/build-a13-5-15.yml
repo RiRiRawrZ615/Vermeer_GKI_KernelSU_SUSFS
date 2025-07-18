@@ -185,7 +185,7 @@ jobs:
           patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
           cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_ksud.c.patch ./
           patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.5/fix_rules.c.patch ./
           patch -p1 --forward --fuzz=3 < fix_rules.c.patch
           cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
           patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
@@ -279,9 +279,9 @@ jobs:
         with:
           name: kernel-${{ env.CONFIG }}
           path: |
-            ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/*.zip
-            ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/*.img.gz
-            ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/*Image*
+            ./out/android13-5.15/dist/*.zip
+            ./out/android13-5.15/dist/*.img.gz
+            ./out/android13-5.15/common/arch/arm64/boot/*Image*
           if-no-files-found: warn
           compression-level: 6
           overwrite: false
@@ -319,11 +319,11 @@ jobs:
         run: |
           cd "$CONFIG"
           mkdir bootimgs
-          if [ -f "./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image" ]; then
-            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./bootimgs/
-            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./bootimgs/
-            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./
-            cp ./out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./
+          if [ -f "./out/android13-5.15/common/arch/arm64/boot/Image" ]; then
+            cp ./out/android13-5.15/common/arch/arm64/boot/Image ./bootimgs/
+            cp ./out/android13-5.15/common/arch/arm64/boot/Image.lz4 ./bootimgs/
+            cp ./out/android13-5.15/common/arch/arm64/boot/Image ./
+            cp ./out/android13-5.15/common/arch/arm64/boot/Image.lz4 ./
             gzip -n -k -f -9 ./Image > ./Image.gz
           else
             echo "Error: Kernel Image not found in expected location!"

@@ -2,14 +2,14 @@ name: GKI Kernel Build
 permissions:
   contents: write
   actions: write
+  packages: write
+  checks: write
+  statuses: write
+  security-events: write
 
 on:
   workflow_call:
     inputs:
-      make_release:
-        required: true
-        type: boolean
-        default: true
       android_version:
         required: true
         type: string
@@ -36,69 +36,28 @@ on:
         type: string
 
 jobs:
-  build-kernel-kernelsu-susfs:
-    runs-on: ubuntu-22.04
+  build-gki:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
+      CCACHE_DIR: /tmp/ccache
 
     steps:
-      - name: Install comprehensive build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            flex \
-            bison \
-            libssl-dev \
-            libelf-dev \
-            bc \
-            python3 \
-            python3-pip \
-            git \
-            ccache \
-            rsync \
-            kmod \
-            cpio \
-            gcc-aarch64-linux-gnu \
-            libncurses-dev \
-            libssl-dev \
-            libc6-dev \
-            gcc \
-            make \
-            g++ \
-            gcc-multilib \
-            libxml2-utils \
-            zlib1g-dev \
-            liblz4-tool \
-            lib32z1-dev \
-            lib32ncurses5-dev \
-            lib32stdc++6 \
-            libxml2-utils \
-            xsltproc \
-            unzip \
-            zip \
-            wget \
-            curl \
-            device-tree-compiler \
-            lz4 \
-            lzma \
-            lzop \
-            u-boot-tools \
-            libhidapi-dev \
-            libusb-1.0-0-dev
-
-      - name: Maximize build space
-        uses: easimon/maximize-build-space@master
+      - name: Maximize Build Space
+        uses: AdityaGarg8/remove-unwanted-software@v5
         with:
-          root-reserve-mb: 8192
-          temp-reserve-mb: 2048
-          swap-size-mb: 8192
-          remove-dotnet: "true"
-          remove-android: "true"
-          remove-haskell: "true"
-          remove-codeql: "true"
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
+          remove-large-packages: 'true'
+          remove-swapfile: 'true'
+          remove-cached-tools: 'false'
+          verbose: 'true'
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -106,16 +65,21 @@ jobs:
           echo "CONFIG=$CONFIG" >> $GITHUB_ENV
           echo "CONFIG set to: $CONFIG"
 
-      - name: Install ccache
-        run: sudo apt update && sudo apt install -y ccache
+      - name: Install ccache and dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y ccache clang lld git-core gnupg flex bison gperf build-essential \
+            zip curl zlib1g-dev gcc-multilib g++-multilib libc6-dev-i386 lib32ncurses5-dev \
+            x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip \
+            python3 python3-pip bc libssl-dev rsync
 
       - name: Set up ccache
         run: |
-          mkdir -p ~/.cache/bazel
-          ccache --version
-          ccache --max-size=2G
+          mkdir -p /tmp/ccache
+          echo "/tmp/ccache" >> $GITHUB_PATH
+          ccache --max-size=5G
           ccache --set-config=compression=true
-          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+          ccache -z
       
       - name: Restore ccache from cache
         uses: actions/cache@v4
@@ -192,49 +156,54 @@ jobs:
           $REPO --version
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Apply SUSFS Patches
+      - name: Apply SUSFS Patches for KernelSU Next
+        if: ${{ inputs.kernelsu_variant == 'NEXT' }}
         run: |
+          echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
-          cd common
-          patch -p1 --forward --fuzz=3 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch
-          cd ..
-          cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          
+          echo "Applying SUSFS patches for KernelSU Next..."
+          cd ./KernelSU-Next
+          
+          # Main SUSFS enable patch
+          cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+          patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
+          
+          # Individual fix patches (kept separate as in original)
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
+          
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
+          
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_selinux.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
+          
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_ksud.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
 
-          if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-            cd ./KernelSU-Next
-            cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-            patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
-            cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch ./
-            patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
-            cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
-            patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-            cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_selinux.c.patch ./
-            patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
-            cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_ksud.c.patch ./
-            patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-            cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
-            patch -p1 --forward --fuzz=3 < fix_rules.c.patch
-            cd ..
-          fi
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_rules.c.patch
 
-      - name: Fix HID driver compatibility
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
+
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch ./
+          patch -p1 --forward --fuzz=3 < fix_kernel_compat.c.patch
+
+      - name: Apply Hooks Patches for Next
+        if: ${{ inputs.kernelsu_variant == 'NEXT' }}
         run: |
-          cd "$CONFIG"
-          sed -i 's/hid_hw_start(hdev, HID_CONNECT_DEFAULT)/hid_hw_start(hdev)/g' common/drivers/hid/hid-wiimote.c
-          sed -i 's/hid_hw_start(hdev, HID_CONNECT_DEFAULT)/hid_hw_start(hdev)/g' common/drivers/hid/hid-sony.c
-
-      - name: Apply Hooks Patches
-        run: |
+          echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/common"
-          if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
-            cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
-            patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
-          fi
+          
+          echo "Applying hooks for KernelSU-Next..."
+          cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
+          patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
 
       - name: Apply Hide Stuff Patches
         run: |
+          echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/common"
           cp ../../kernel_patches/69_hide_stuff.patch ./
           patch -p1 -F 3 < 69_hide_stuff.patch

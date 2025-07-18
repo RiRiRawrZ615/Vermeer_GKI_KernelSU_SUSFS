@@ -1,10 +1,10 @@
 name: GKI Kernel Build
 permissions:
-  contents: write  # Allow writing to repository contents (for pushing tags)
-  actions: write   # Allows triggering actions
+  contents: write
+  actions: write
 
 on:
-  workflow_call: # This allows this workflow to be called from another workflow
+  workflow_call:
     inputs:
       make_release:
         required: true
@@ -44,7 +44,7 @@ jobs:
       CCACHE_HARDLINK: "true"
 
     steps:
-      - name: Install build dependencies
+      - name: Install comprehensive build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -80,7 +80,14 @@ jobs:
             unzip \
             zip \
             wget \
-            curl
+            curl \
+            device-tree-compiler \
+            lz4 \
+            lzma \
+            lzop \
+            u-boot-tools \
+            libhidapi-dev \
+            libusb-1.0-0-dev
 
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
@@ -445,16 +452,15 @@ jobs:
       - name: Build with retry
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 60
+          timeout_minutes: 90
           max_attempts: 3
           retry_on: error
           command: |
             set -e
             set -x
             cd "$CONFIG"
-            echo "Building the kernel with traditional make method..."
             
-            # Set up environment variables for cross-compilation
+            # Set up environment variables
             export ARCH=arm64
             export CROSS_COMPILE=aarch64-linux-gnu-
             export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
@@ -463,7 +469,10 @@ jobs:
             export LLVM_IAS=1
             export PATH=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/bin:$PATH
             
-            # Build using traditional make method
+            # Clean previous build artifacts
+            make O=out clean && make O=out mrproper
+            
+            # Build with verbose output
             cd common
             make O=out gki_defconfig
             make -j$(nproc --all) O=out \
@@ -478,10 +487,10 @@ jobs:
               HOSTCC=clang \
               HOSTCXX=clang++ \
               HOSTAR=llvm-ar \
-              HOSTLD=ld.lld
+              HOSTLD=ld.lld \
+              V=1  # Enable verbose output
             
             ccache --show-stats
-
       - name: Check for .rej
         if: failure()
         run: |

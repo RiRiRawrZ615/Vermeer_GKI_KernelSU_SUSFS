@@ -278,11 +278,11 @@ jobs:
             KSU_SUB_VERSION="${{ env.KSU_SUB_VERSION }}"
             SUSFS_VERSION="${{ env.SUSFS_VERSION }}"
             NEW_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
-            touch ./downloaded-artifacts/$NEW_NAME.zip
-            touch ./downloaded-artifacts/$NEW_NAME-boot.img
-            if [ -f ./downloaded-artifacts/$NEW_NAME-dtbo.img ]; then
-              touch ./downloaded-artifacts/$NEW_NAME-dtbo.img
-            fi
+            
+            # Create files with minimal content instead of empty files
+            echo "Test content" > ./downloaded-artifacts/$NEW_NAME.zip
+            echo "Test content" > ./downloaded-artifacts/$NEW_NAME-boot.img
+            echo "Test content" > ./downloaded-artifacts/$NEW_NAME-dtbo.img
           else
             echo "Downloading artifacts..."
             uses: actions/download-artifact@v4
@@ -293,23 +293,22 @@ jobs:
 
       # Rename and Prepare Files
       - name: Rename Files
+        if: ${{ !inputs.test_release }}  # Only run this step for non-test releases
         run: |
-          if [ "${{ inputs.test_release }}" != "true" ]; then
-            KSU_VERSION="${{ env.KSU_MAIN_VERSION }}"
-            KSU_SUB_VERSION="${{ env.KSU_SUB_VERSION }}"
-            SUSFS_VERSION="${{ env.SUSFS_VERSION }}"
-            NEW_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
-            
-            # Rename zip file
-            mv ./downloaded-artifacts/gs101.zip ./downloaded-artifacts/$NEW_NAME.zip
-            
-            # Rename Image.lz4 to boot.img
-            mv ./downloaded-artifacts/Image.lz4 ./downloaded-artifacts/$NEW_NAME-boot.img
-            
-            # Optionally rename dtbo.img if present
-            if [ -f ./downloaded-artifacts/dtbo.img ]; then
-              mv ./downloaded-artifacts/dtbo.img ./downloaded-artifacts/$NEW_NAME-dtbo.img
-            fi
+          KSU_VERSION="${{ env.KSU_MAIN_VERSION }}"
+          KSU_SUB_VERSION="${{ env.KSU_SUB_VERSION }}"
+          SUSFS_VERSION="${{ env.SUSFS_VERSION }}"
+          NEW_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
+          
+          # Rename zip file
+          mv ./downloaded-artifacts/gs101.zip ./downloaded-artifacts/$NEW_NAME.zip
+          
+          # Rename Image.lz4 to boot.img
+          mv ./downloaded-artifacts/Image.lz4 ./downloaded-artifacts/$NEW_NAME-boot.img
+          
+          # Optionally rename dtbo.img if present
+          if [ -f ./downloaded-artifacts/dtbo.img ]; then
+            mv ./downloaded-artifacts/dtbo.img ./downloaded-artifacts/$NEW_NAME-dtbo.img
           fi
 
       # Create GitHub Release and upload files if make_release is true

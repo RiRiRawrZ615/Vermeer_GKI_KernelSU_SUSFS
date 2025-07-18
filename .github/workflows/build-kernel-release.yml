@@ -33,8 +33,8 @@ on:
         type: string
         default: ""
       kernelsu_commit_hash:
-        description: "Specify the GitHub commit hash for KernelSU Next (e.g., 3fd61e0ee5ee5e6fe941a892924ac26aa752b618)"
-        required: true
+        description: "Specify the GitHub commit hash for KernelSU Next (e.g., 3fd61e0ee5ee5e6fe941a892924ac26aa752b618). Leave blank for latest."
+        required: false
         type: string
       susfs_version:
         description: "Specify the SUSFS version"
@@ -70,7 +70,11 @@ jobs:
           # Add KernelSU and SUSFS integration steps here (simplified)
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
           cd KernelSU-Next
-          git checkout ${{ inputs.kernelsu_commit_hash }}
+          if [ -z "${{ inputs.kernelsu_commit_hash }}" ]; then
+            git checkout $(git rev-parse origin/next)
+          else
+            git checkout ${{ inputs.kernelsu_commit_hash }}
+          fi
           cd ..
           # Placeholder for SUSFS and build steps (to be expanded based on kernel-a13-5.15.yml)
 
@@ -96,7 +100,6 @@ jobs:
   trigger-release:
     runs-on: ubuntu-latest
     if: ${{ inputs.make_release }}
-    needs: ${{ !inputs.test_release && 'build-kernel-a13-5-15' || '' }}  # Only depend on build job if not test_release
     env:
       REPO_OWNER: RiRiRawrZ615
       REPO_NAME: Vermeer_GKI_KernelSU_SUSFS
@@ -140,8 +143,12 @@ jobs:
           REPO_URL="https://github.com/KernelSU-Next/KernelSU-Next.git"
           REPO_URL2="KernelSU-Next/KernelSU-Next"
           
-          # Use the provided commit hash
-          KSU_REF=${{ inputs.kernelsu_commit_hash }}
+          # Use the provided commit hash or default to latest
+          if [ -z "${{ inputs.kernelsu_commit_hash }}" ]; then
+            KSU_REF=$(git ls-remote --heads $REPO_URL refs/heads/next | awk '{print $1}')
+          else
+            KSU_REF=${{ inputs.kernelsu_commit_hash }}
+          fi
           KSU_URL="https://github.com/$REPO_URL2/commit/$KSU_REF"
 
           # Echo the values to GitHub environment for later use

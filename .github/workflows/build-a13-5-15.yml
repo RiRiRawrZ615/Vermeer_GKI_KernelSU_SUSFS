@@ -273,6 +273,20 @@ jobs:
             fi
             ccache --show-stats
 
+      - name: Upload Build Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ env.CONFIG }}
+          path: |
+            ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/*.zip
+            ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/*.img.gz
+            ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/*Image*
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
+
       - name: Check for .rej files
         if: failure()
         run: |
@@ -340,10 +354,15 @@ jobs:
           done
 
       - name: Upload Build Artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: kernel-${{ env.CONFIG }}
           path: |
-            *.zip
-            *.img.gz
-            *Image*
+            ./$CONFIG/*.zip
+            ./$CONFIG/*.img.gz
+            ./$CONFIG/*Image*
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false

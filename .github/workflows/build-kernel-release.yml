@@ -400,12 +400,17 @@ jobs:
             NEW_TAG="v${BASE_VERSION}-r${NEW_NUM}"
           fi
           
+          # Ensure tag is unique by appending a timestamp if it already exists
+          while git rev-parse "$NEW_TAG" >/dev/null 2>&1; do
+            NEW_TAG="${NEW_TAG}-$(date +%s)"
+          done
+          
           echo "New tag: $NEW_TAG"
           echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
           
-          git tag $NEW_TAG || echo "Tag already exists, continuing..."
-          git push origin $NEW_TAG || echo "Tag push failed, may already exist"
-
+          git tag "$NEW_TAG" || echo "Tag creation failed, proceeding with existing tag"
+          git push origin "$NEW_TAG" || echo "Tag push failed, using local tag"
+          
       - name: Download Artifacts
         if: ${{ inputs.test_release != 'true' }}
         uses: actions/download-artifact@v4

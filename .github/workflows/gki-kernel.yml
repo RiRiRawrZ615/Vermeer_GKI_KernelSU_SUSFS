@@ -33,10 +33,10 @@ on:
       kernelsu_branch_other:
         required: false
         type: string
-      kernelsu_commit_hash:
-        required: true
-        type: string
-        default: "3fd61e0ee5ee5e6fe941a892924ac26aa752b618"
+      #kernelsu_commit_hash:
+      #  required: true
+      #  type: string
+      #  default: "3fd61e0ee5ee5e6fe941a892924ac26aa752b618"
       susfs_version:
         required: true
         type: string
@@ -167,7 +167,8 @@ jobs:
           # Clone repositories using the branch names
           git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "gki-2.0"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
-          git clone https://github.com/RiRiRawrZ615/kernel_patches.git
+          #git clone https://github.com/RiRiRawrZ615/kernel_patches.git
+          git clone https://github.com/WildKernels/kernel_patches.git
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -243,12 +244,12 @@ jobs:
             ls -la
             exit 1
           }
-          cd KernelSU-Next
-          echo "Using specified KernelSU commit: ${{ inputs.kernelsu_commit_hash }}"
-          git checkout ${{ inputs.kernelsu_commit_hash }}
-          cd ..
-          echo "Post-KernelSU setup directory contents:"
-          ls -la
+          #cd KernelSU-Next
+          #echo "Using specified KernelSU commit: ${{ inputs.kernelsu_commit_hash }}"
+          #git checkout ${{ inputs.kernelsu_commit_hash }}
+          #cd ..
+          #echo "Post-KernelSU setup directory contents:"
+          #ls -la
 
       - name: Apply SUSFS Patches for KernelSU Variants
         run: |

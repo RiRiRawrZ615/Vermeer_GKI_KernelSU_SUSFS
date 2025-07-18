@@ -43,7 +43,8 @@ on:
         default: "v1.5.9"
 
 env:
-  BASE_KERNELSU_VERSION: "1.0.9"
+  BASE_VERSION: "1.5.9"  # For tag generation
+  BASE_KERNELSU_VERSION: "1.0.9"  # For KernelSU version
 
 jobs:
   build-kernel-a13-5-15:
@@ -89,6 +90,7 @@ jobs:
           mkdir -p ./artifacts
           cp Vermeer_GKI_KernelSU_SUSFS/out/arch/arm64/boot/Image.lz4 ./artifacts/Image.lz4
           cp Vermeer_GKI_KernelSU_SUSFS/AnyKernel3/gs101.zip ./artifacts/gs101.zip
+          # Explicitly don't copy dtbo.img
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
@@ -107,7 +109,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Validate inputs and determine the branch for KernelSU-${{ inputs.kernelsu_variant }}
+      - name: Validate inputs and determine branch
         run: |
           if [ "${{ inputs.kernelsu_variant }}" != "Next" ]; then
             echo "Error: kernelsu_variant must be 'Next'" >&2
@@ -131,9 +133,8 @@ jobs:
 
           echo "KSU_BRANCH=$BRANCH" >> $GITHUB_ENV
 
-      - name: Get commit hash or tag and generate URL for KernelSU-${{ inputs.kernelsu_variant }}
+      - name: Get KernelSU commit info
         run: |
-          echo "This is the Next variant"
           REPO_URL="https://github.com/KernelSU-Next/KernelSU-Next.git"
           REPO_URL2="KernelSU-Next/KernelSU-Next"
           
@@ -146,10 +147,8 @@ jobs:
 
           echo "KSU_REF=$KSU_REF" >> $GITHUB_ENV
           echo "KSU_URL=$KSU_URL" >> $GITHUB_ENV
-          echo "KernelSU Reference: $KSU_REF"
-          echo "KernelSU URL: $KSU_URL"
 
-      - name: Detect KernelSU Next Main and Subversion or Use Dummy Values
+      - name: Detect KernelSU version
         run: |
           if [ "${{ inputs.test_release }}" == "true" ]; then
             echo "Using dummy values for test release..."
@@ -157,51 +156,32 @@ jobs:
             echo "KSU_SUB_VERSION=12798" >> $GITHUB_ENV
           else
             KSU_VERSION=$(curl -s "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/tags" | jq -r '.[0].name' | grep -oP 'v\d+\.\d+\.\d+')
-            
-            if [ -z "$KSU_VERSION" ]; then
-              echo "Warning: Could not detect KernelSU version, falling back to ${{ env.BASE_KERNELSU_VERSION }}"
-              KSU_VERSION="v${{ env.BASE_KERNELSU_VERSION }}"
-            fi
+            [ -z "$KSU_VERSION" ] && KSU_VERSION="v${{ env.BASE_KERNELSU_VERSION }}"
             
             KSU_MAIN_VERSION=$(echo "$KSU_VERSION" | sed 's/v//' | cut -d'.' -f1-2)
             KSU_SUB_VERSION=$(echo "$KSU_VERSION" | grep -oP '\d+$' || echo "0")
             
             echo "KSU_MAIN_VERSION=$KSU_MAIN_VERSION" >> $GITHUB_ENV
             echo "KSU_SUB_VERSION=$KSU_SUB_VERSION" >> $GITHUB_ENV
-            echo "Detected KernelSU Next Version: $KSU_MAIN_VERSION.$KSU_SUB_VERSION"
           fi
 
-      - name: Get commit hashes and generate commit URLs
+      - name: Get SUSFS commit info
         run: |
           GITLAB_OWNER="simonpunk"
           GITLAB_REPO="susfs4ksu"
+          COMMIT_HASH=$(git ls-remote https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO.git refs/heads/gki-android13-5.15 | awk '{ print $1 }')
+          COMMIT_URL="https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO/-/commit/$COMMIT_HASH"
+          
+          echo "COMMIT_HASH=$COMMIT_HASH" >> $GITHUB_ENV
+          echo "COMMIT_URL=$COMMIT_URL" >> $GITHUB_ENV
 
-          declare -A BRANCH_MAP=(
-            ["gki_android13_5_15"]="gki-android13-5.15"
-          )
-
-          for var_name in "${!BRANCH_MAP[@]}"; do
-            branch_name="${BRANCH_MAP[$var_name]}"
-            COMMIT_HASH=$(git ls-remote https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO.git refs/heads/$branch_name | awk '{ print $1 }')
-
-            if [[ -n "$COMMIT_HASH" ]]; then
-              COMMIT_URL="https://gitlab.com/$GITLAB_OWNER/$GITLAB_REPO/-/commit/$COMMIT_HASH"
-              echo "$branch_name Commit: $COMMIT_HASH"
-              echo "$branch_name Commit URL: $COMMIT_URL"
-
-              echo "COMMIT_HASH_${var_name}=$COMMIT_HASH" >> "$GITHUB_ENV"
-              echo "COMMIT_URL_${var_name}=$COMMIT_URL" >> $GITHUB_ENV
-            fi
-          done
-
-      - name: Detect SUSFS Version or Use Dummy Value
+      - name: Detect SUSFS Version
         run: |
           if [ "${{ inputs.test_release }}" == "true" ]; then
             echo "Using dummy SUSFS version for test release..."
             echo "SUSFS_VERSION=v1.5.9" >> $GITHUB_ENV
           else
             SUSFS_VERSION=${{ inputs.susfs_version }}
-            echo "Detected SUSFS Version: $SUSFS_VERSION"
             echo "SUSFS_VERSION=$SUSFS_VERSION" >> $GITHUB_ENV
           fi
 
@@ -220,69 +200,75 @@ jobs:
           echo "- Wireguard Support" >> $GITHUB_ENV
           echo "" >> $GITHUB_ENV
           echo "**Notes:**" >> $GITHUB_ENV
-          echo "This is a MODIFIED kernel only meant for VERMEER devices a.k.a Redmi K70 / Poco F6 Pro, running on HyperOS 1.0.6. if you do not have this device please do not flash this." >> $GITHUB_ENV
+          echo "This is a MODIFIED kernel only meant for VERMEER devices a.k.a Redmi K70 / Poco F6 Pro, running on HyperOS 1.0.6. If you do not have this device please do not flash this." >> $GITHUB_ENV
           echo "" >> $GITHUB_ENV
           echo "**Module:**" >> $GITHUB_ENV
           echo "- https://github.com/sidex15/ksu_module_susfs" >> $GITHUB_ENV
           echo "" >> $GITHUB_ENV
           echo "**Commit Hashes:**" >> $GITHUB_ENV
           echo "- KernelSU: [$KSU_REF]($KSU_URL)" >> $GITHUB_ENV
-          echo "- SUSFS4KSU: [$COMMIT_HASH_gki_android13_5_15]($COMMIT_URL_gki_android13_5_15)" >> $GITHUB_ENV
+          echo "- SUSFS4KSU: [$COMMIT_HASH]($COMMIT_URL)" >> $GITHUB_ENV
           echo "" >> $GITHUB_ENV
           echo "LTO: thin" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Generate and Create New Tag
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-            LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
-            if [ -z "$LATEST_TAG" ]; then
-              LATEST_TAG="v${BASE_KERNELSU_VERSION}-r0"
-            fi
-            
-            RELEASE_NUM=$(echo "$LATEST_TAG" | sed -E "s/v${BASE_KERNELSU_VERSION//./\\.}-r([0-9]+)/\1/")
-            RELEASE_NUM=$((RELEASE_NUM + 1))
-            NEW_TAG="v${BASE_KERNELSU_VERSION}-r$RELEASE_NUM"
-            
-            echo "New tag: $NEW_TAG"
-            echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
-            
-            git tag $NEW_TAG
-            git push --tags
+          # Fetch all existing tags matching our pattern
+          TAGS=$(git tag -l "v${BASE_VERSION}-r*" | sort -V)
+          
+          if [ -z "$TAGS" ]; then
+            NEW_TAG="v${BASE_VERSION}-r1"
+          else
+            LAST_TAG=$(echo "$TAGS" | tail -n1)
+            LAST_NUM=$(echo "$LAST_TAG" | sed -E "s/v${BASE_VERSION//./\\.}-r([0-9]+)/\1/")
+            NEW_NUM=$((LAST_NUM + 1))
+            NEW_TAG="v${BASE_VERSION}-r${NEW_NUM}"
+          fi
+          
+          echo "New tag: $NEW_TAG"
+          echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
+          
+          git tag $NEW_TAG || echo "Tag already exists, continuing..."
+          git push origin $NEW_TAG || echo "Tag push failed, may already exist"
 
-      - name: Download Artifacts or Create Dummy Files
+      - name: Prepare Artifacts
         run: |
           if [ "${{ inputs.test_release }}" == "true" ]; then
             echo "Creating dummy files for test release..."
-            mkdir -p ./downloaded-artifacts
+            mkdir -p ./release-artifacts
             KSU_VERSION="${{ env.KSU_MAIN_VERSION }}"
             KSU_SUB_VERSION="${{ env.KSU_SUB_VERSION }}"
             SUSFS_VERSION="${{ env.SUSFS_VERSION }}"
-            NEW_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
+            NEW_BASE_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
             
-            echo "Test content" > ./downloaded-artifacts/${NEW_NAME}.zip
-            echo "Test content" > ./downloaded-artifacts/${NEW_NAME}-boot.img
-            echo "Test content" > ./downloaded-artifacts/${NEW_NAME}-dtbo.img
+            echo "Test content" > "./release-artifacts/${NEW_BASE_NAME}.zip"
+            echo "Test content" > "./release-artifacts/${NEW_BASE_NAME}.img"
           else
-            echo "Downloading artifacts..."
+            echo "Downloading and preparing real artifacts..."
+            mkdir -p ./release-artifacts
             uses: actions/download-artifact@v4
             with:
               name: kernel-a13-5-15
               path: ./downloaded-artifacts
+            
+            KSU_VERSION="${{ env.KSU_MAIN_VERSION }}"
+            KSU_SUB_VERSION="${{ env.KSU_SUB_VERSION }}"
+            SUSFS_VERSION="${{ env.SUSFS_VERSION }}"
+            NEW_BASE_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
+            
+            mv ./downloaded-artifacts/gs101.zip "./release-artifacts/${NEW_BASE_NAME}.zip"
+            mv ./downloaded-artifacts/Image.lz4 "./release-artifacts/${NEW_BASE_NAME}.img"
           fi
 
-      - name: Rename Files
-        if: ${{ !inputs.test_release }}
+      - name: Verify Artifacts
         run: |
-          KSU_VERSION="${{ env.KSU_MAIN_VERSION }}"
-          KSU_SUB_VERSION="${{ env.KSU_SUB_VERSION }}"
-          SUSFS_VERSION="${{ env.SUSFS_VERSION }}"
-          NEW_NAME="android13-5.15.123-AK3-KSU-Next-${KSU_VERSION}-Dev-${KSU_SUB_VERSION}-SUSFS${SUSFS_VERSION}"
-          
-          mv ./downloaded-artifacts/gs101.zip ./downloaded-artifacts/${NEW_NAME}.zip
-          mv ./downloaded-artifacts/Image.lz4 ./downloaded-artifacts/${NEW_NAME}-boot.img
-          [ -f ./downloaded-artifacts/dtbo.img ] && mv ./downloaded-artifacts/dtbo.img ./downloaded-artifacts/${NEW_NAME}-dtbo.img
+          if [ ! -f "./release-artifacts/"*.zip ] || [ ! -f "./release-artifacts/"*.img ]; then
+            echo "Error: Required artifacts missing!"
+            exit 1
+          fi
+          echo "Artifacts verified:"
+          ls -lh ./release-artifacts/
 
       - name: Create GitHub Release
         uses: actions/create-release@v1
@@ -292,16 +278,9 @@ jobs:
           release_name: ${{ env.RELEASE_NAME }}
           body: ${{ env.RELEASE_NOTES }}
 
-      - name: Upload Release Assets Dynamically
+      - name: Upload Release Assets
         run: |
-          for file in ./downloaded-artifacts/*; do
-              if [ -f "$file" ]; then
-                  echo "Uploading $file..."
-                  gh release upload ${{ env.NEW_TAG }} "$file"
-              fi
+          for file in ./release-artifacts/*; do
+              echo "Uploading $file..."
+              gh release upload ${{ env.NEW_TAG }} "$file"
           done
-
-      - name: Display Files Uploaded
-        run: |
-          echo "GitHub release created with the following files:"
-          ls -lh ./downloaded-artifacts/

@@ -185,7 +185,7 @@ jobs:
           patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
           cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_ksud.c.patch ./
           patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.5/fix_rules.c.patch ./
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
           patch -p1 --forward --fuzz=3 < fix_rules.c.patch
           cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
           patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch

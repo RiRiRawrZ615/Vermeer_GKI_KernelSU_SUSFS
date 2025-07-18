@@ -25,22 +25,12 @@ on:
       kernelsu_variant:
         required: true
         type: string
-        default: "Next"
       kernelsu_branch:
         required: true
         type: string
-        default: "Dev"
       kernelsu_branch_other:
         required: false
         type: string
-      #kernelsu_commit_hash:
-      #  required: true
-      #  type: string
-      #  default: "3fd61e0ee5ee5e6fe941a892924ac26aa752b618"
-      susfs_version:
-        required: true
-        type: string
-        default: "v1.5.9"
       revision:
         required: false
         type: string
@@ -54,6 +44,44 @@ jobs:
       CCACHE_HARDLINK: "true"
 
     steps:
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            flex \
+            bison \
+            libssl-dev \
+            libelf-dev \
+            bc \
+            python3 \
+            python3-pip \
+            git \
+            ccache \
+            rsync \
+            kmod \
+            cpio \
+            gcc-aarch64-linux-gnu \
+            libncurses-dev \
+            libssl-dev \
+            libc6-dev \
+            gcc \
+            make \
+            g++ \
+            gcc-multilib \
+            libxml2-utils \
+            zlib1g-dev \
+            liblz4-tool \
+            lib32z1-dev \
+            lib32ncurses5-dev \
+            lib32stdc++6 \
+            libxml2-utils \
+            xsltproc \
+            unzip \
+            zip \
+            wget \
+            curl
+
       - name: Maximize build space
         uses: easimon/maximize-build-space@master
         with:
@@ -64,21 +92,6 @@ jobs:
           remove-android: "true"
           remove-haskell: "true"
           remove-codeql: "true"
-
-      - name: Validate inputs
-        run: |
-          # Validate kernelsu_variant
-          if [ "${{ inputs.kernelsu_variant }}" != "Next" ]; then
-            echo "Error: kernelsu_variant must be 'Next'" >&2
-            exit 1
-          fi
-
-          # Validate kernelsu_branch
-          VALID_BRANCHES=("Stable" "Dev" "Other")
-          if [[ ! " ${VALID_BRANCHES[@]} " =~ " ${{ inputs.kernelsu_branch }} " ]]; then
-            echo "Error: kernelsu_branch must be 'Stable', 'Dev', or 'Other'" >&2
-            exit 1
-          fi
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -167,8 +180,7 @@ jobs:
           # Clone repositories using the branch names
           git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "gki-2.0"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
-          #git clone https://github.com/RiRiRawrZ615/kernel_patches.git
-          git clone https://github.com/WildKernels/kernel_patches.git
+          git clone https://github.com/RiRiRawrZ615/kernel_patches.git
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -225,7 +237,9 @@ jobs:
         run: |
           if [[ "${{ inputs.kernelsu_branch }}" == "Stable" ]]; then
               echo "BRANCH=-" >> $GITHUB_ENV
-          elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" ]]; then
+          elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" && ( "${{ inputs.kernelsu_variant }}" == "Official" || "${{ inputs.kernelsu_variant }}" == "MKSU" ) ]]; then
+              echo "BRANCH=-s main" >> $GITHUB_ENV
+          elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" && "${{ inputs.kernelsu_variant }}" == "Next" ]]; then
               echo "BRANCH=-s next" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Other" && -n "${{ inputs.kernelsu_branch_other }}" ]]; then
             echo "BRANCH=-s ${{ inputs.kernelsu_branch_other }}" >> $GITHUB_ENV
@@ -238,19 +252,18 @@ jobs:
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
-          echo "Running KernelSU setup in $(pwd)"
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next || {
-            echo "Error: KernelSU setup failed. Dumping directory contents for debugging:"
-            ls -la
-            exit 1
-          }
-          #cd KernelSU-Next
-          #echo "Using specified KernelSU commit: ${{ inputs.kernelsu_commit_hash }}"
-          #git checkout ${{ inputs.kernelsu_commit_hash }}
-          #cd ..
-          #echo "Post-KernelSU setup directory contents:"
-          #ls -la
 
+          if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
+            echo "Adding KernelSU Official..."
+            curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash $BRANCH
+          elif [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
+            echo "Adding KernelSU Next..."
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
+            echo "Adding KernelSU MKSU..."
+            curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash $BRANCH
+          fi
+          
       - name: Apply SUSFS Patches for KernelSU Variants
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -267,32 +280,49 @@ jobs:
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           
           case "${{ inputs.kernelsu_variant }}" in
+            "WILD")
+              echo "Applying SUSFS patches for Official KernelSU..."
+              cd ./Wild_KSU
+              cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
+              cp ../../kernel_patches/wild/fix_core_hook.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
+              cp ../../kernel_patches/wild/fix_selinux.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
+              cp ../../kernel_patches/wild/fix_ksud.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
+              cp ../../kernel_patches/wild/fix_sucompat.c.patch ./
+              patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
+              sed -i '/bool ksu_devpts_hook = false;/d' ./kernel/sucompat.c
+              ;;
+            "KSU")
+              echo "Applying SUSFS patches for Official KernelSU..."
+              cd ./KernelSU
+              cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch
+              ;;
             "Next")
               echo "Applying SUSFS patches for KernelSU Next..."
               cd ./KernelSU-Next
               cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
-              
+              patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true              
               cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch
-              
+              patch -p1 --forward --fuzz=3 < fix_apk_sign.c.patch              
               cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_core_hook.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch
-              
+              patch -p1 --forward --fuzz=3 < fix_core_hook.c.patch              
               cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_selinux.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch
-              
+              patch -p1 --forward --fuzz=3 < fix_selinux.c.patch     
               cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_ksud.c.patch ./
               patch -p1 --forward --fuzz=3 < fix_ksud.c.patch
-
               cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_rules.c.patch ./
               patch -p1 --forward --fuzz=3 < fix_rules.c.patch
-
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_sucompat.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_sucompat.c.patch
-
-              cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_kernel_compat.c.patch ./
-              patch -p1 --forward --fuzz=3 < fix_kernel_compat.c.patch              
+              
+              ;;
+            "MKSU")
+              echo "Applying SUSFS patches for MKSU..."
+              cd ./KernelSU
+              cp ../../kernel_patches/next/0001_susfs_157_for_ksunext.patch ./
+              patch -p1 --forward --fuzz=3 < 0001_susfs_157_for_ksunext.patch
               ;;
           esac
           
@@ -305,6 +335,10 @@ jobs:
             echo "Applying hooks for KernelSU-Next..."
             cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
             patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
+          elif [ "${{ inputs.kernelsu_variant }}" == "WILD" ]; then
+            echo "Applying hooks for Wild KSU..."
+            cp ../../kernel_patches/wild/syscall_hooks.patch ./
+            patch -p1 -F 3 < syscall_hooks.patch
           fi
           
       - name: Apply Hide Stuff Patches
@@ -348,6 +382,8 @@ jobs:
 
           if [ "${{ inputs.kernelsu_variant }}" == "Next" ]; then
             echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
+          else
+            echo "CONFIG_KSU_SUSFS_SUS_SU=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
           
           # Add additional tmpfs config setting
@@ -365,12 +401,8 @@ jobs:
           sed -i 's/check_defconfig//' ./common/build.config.gki
       
       - name: Config BBR
-        #if: ${{ inputs.kernel_version != '6.6' }}
         run: |
           cd "$CONFIG/common"
-          # Add bbrv3 config setting
-          #cp ../../kernel_patches/bbr/tcp_bbr.c ./net/ipv4/
-
           cd ..
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig 
           echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -379,26 +411,18 @@ jobs:
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
 
-
       - name: Config Kernel Name
         run: |
-          echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
-
           perl -pi -e 's|echo "\$res"|echo "-android13-8-00008-g3ca6a2912c7e-ab11087001"|' ./common/scripts/setlocalversion
-
-          # Run perl command to modify UTS_VERSION
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Nov 11 06:58:10 UTC 2023"}' ./common/scripts/mkcompile_h
 
-          echo "Building the kernel..."
           if [ -f "build/build.sh" ]; then
             sed -i 's/-dirty//' ./common/scripts/setlocalversion
-            #LTO=${{ inputs.lto_type }} BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang"
           else
             rm -rf ./common/android/abi_gki_protected_exports_*
             sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
             sed -E -i '/^CONFIG_LOCALVERSION=/ s/(.*)"$/\1-Wild+"/' ./common/arch/arm64/configs/gki_defconfig
-            #tools/bazel build --config=fast --lto=${{ inputs.lto_type }} //common:kernel_aarch64_dist
           fi
 
       - name: Copy file
@@ -421,19 +445,41 @@ jobs:
       - name: Build with retry
         uses: nick-fields/retry@v3
         with:
-          timeout_minutes: 30
+          timeout_minutes: 60
           max_attempts: 3
-          retry_on: timeout
+          retry_on: error
           command: |
             set -e
             set -x
             cd "$CONFIG"
-            echo "Building the kernel..."
-            if [ -f "build/build.sh" ]; then
-              LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
-            else
-              tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
-            fi
+            echo "Building the kernel with traditional make method..."
+            
+            # Set up environment variables for cross-compilation
+            export ARCH=arm64
+            export CROSS_COMPILE=aarch64-linux-gnu-
+            export CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+            export CLANG_TRIPLE=aarch64-linux-gnu-
+            export LLVM=1
+            export LLVM_IAS=1
+            export PATH=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/bin:$PATH
+            
+            # Build using traditional make method
+            cd common
+            make O=out gki_defconfig
+            make -j$(nproc --all) O=out \
+              CC="ccache clang" \
+              LD=ld.lld \
+              AR=llvm-ar \
+              NM=llvm-nm \
+              STRIP=llvm-strip \
+              OBJCOPY=llvm-objcopy \
+              OBJDUMP=llvm-objdump \
+              READELF=llvm-readelf \
+              HOSTCC=clang \
+              HOSTCXX=clang++ \
+              HOSTAR=llvm-ar \
+              HOSTLD=ld.lld
+            
             ccache --show-stats
 
       - name: Check for .rej

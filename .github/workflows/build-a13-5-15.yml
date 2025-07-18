@@ -319,23 +319,18 @@ jobs:
         run: |
           cd "$CONFIG"
           mkdir bootimgs
-          if [ -f "./out/android13-5.15/common/arch/arm64/boot/Image" ]; then
-            cp ./out/android13-5.15/common/arch/arm64/boot/Image ./bootimgs/
-            cp ./out/android13-5.15/common/arch/arm64/boot/Image.lz4 ./bootimgs/
-            cp ./out/android13-5.15/common/arch/arm64/boot/Image ./
-            cp ./out/android13-5.15/common/arch/arm64/boot/Image.lz4 ./
-            gzip -n -k -f -9 ./Image > ./Image.gz
-          else
-            echo "Error: Kernel Image not found in expected location!"
-            exit 1
-          fi
+          cp ./out/android13-5.15/common/arch/arm64/boot/Image ./
+          cp ./out/android13-5.15/common/arch/arm64/boot/Image.lz4 ./
+          cp ./out/android13-5.15/common/arch/arm64/boot/Image ./bootimgs/
+          cp ./out/android13-5.15/common/arch/arm64/boot/Image.lz4 ./bootimgs/
+          gzip -n -k -f -9 ./Image > ./Image.gz
 
       - name: Create ZIP Files for Different Formats
         run: |
           cd ./AnyKernel3
-          ZIP_NAME="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
+          ZIP_NAME="android13-5.15.123-2023-11-AnyKernel3.zip"
           echo "Creating zip file: $ZIP_NAME..."
-          mv ../Image ./Image
+          cp ../Image ./Image
           zip -r "../$ZIP_NAME" ./*
           rm ./Image
 

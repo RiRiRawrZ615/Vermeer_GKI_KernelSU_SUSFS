@@ -274,71 +274,68 @@ jobs:
             fi
             ccache --show-stats
 
-      - name: Create Bootimgs Folder and Copy Images
+      - name: Create Boot Images and ZIP Files
         run: |
+          echo "===== Starting Boot Image and ZIP Creation ====="
           cd "$CONFIG"
-          mkdir -p bootimgs
-          # Copy from dist directory
-          echo "Copying files from ./out/android13-5.15/dist..."
-          cp -v ./out/android13-5.15/dist/boot.img ./bootimgs/ || true
-          cp -v ./out/android13-5.15/dist/boot-gz.img ./bootimgs/boot-gz.img || true
-          cp -v ./out/android13-5.15/dist/boot-lz4.img ./bootimgs/boot-lz4.img || true
-          # Copy kernel images from common/arch/arm64/boot
-          echo "Copying kernel images from ./out/android13-5.15/common/arch/arm64/boot..."
-          cp -v ./out/android13-5.15/common/arch/arm64/boot/Image ./bootimgs/ || true
-          cp -v ./out/android13-5.15/common/arch/arm64/boot/Image.gz ./bootimgs/ || true
-          cp -v ./out/android13-5.15/common/arch/arm64/boot/Image.lz4 ./bootimgs/ || true
-          # Search for Image files in all possible locations as a fallback
-          echo "Searching for Image files in ./out and $GITHUB_WORKSPACE..."
-          find "$GITHUB_WORKSPACE" -type f \( -name "Image" -o -name "Image.gz" -o -name "Image.lz4" -o -name "boot.img" -o -name "boot-gz.img" -o -name "boot-lz4.img" \) -exec cp -v {} ./bootimgs/ \; || true
-          # Copy to $CONFIG for AnyKernel3
-          cp -v ./bootimgs/Image ./Image || true
-          cp -v ./bootimgs/Image.gz ./Image.gz || true
-          cp -v ./bootimgs/Image.lz4 ./Image.lz4 || true
-          # If no images found, try to generate Image.gz from Image
-          if [ ! -f ./bootimgs/Image ] && [ ! -f ./bootimgs/Image.gz ] && [ ! -f ./bootimgs/Image.lz4 ] && [ ! -f ./bootimgs/boot.img ] && [ ! -f ./bootimgs/boot-gz.img ] && [ ! -f ./bootimgs/boot-lz4.img ]; then
-            echo "Warning: No kernel Image or boot image files found, attempting to generate Image.gz..."
-            find "$GITHUB_WORKSPACE" -type f -name "Image" -exec cp -v {} ./bootimgs/Image \;
-            if [ -f ./bootimgs/Image ]; then
-              gzip -n -k -f -9 ./bootimgs/Image -c > ./bootimgs/Image.gz
-              cp -v ./bootimgs/Image.gz ./Image.gz || true
-            fi
-          fi
-          # Final check for images
-          if [ ! -f ./bootimgs/Image ] && [ ! -f ./bootimgs/Image.gz ] && [ ! -f ./bootimgs/Image.lz4 ] && [ ! -f ./bootimgs/boot.img ] && [ ! -f ./bootimgs/boot-gz.img ] && [ ! -f ./bootimgs/boot-lz4.img ]; then
-            echo "Error: No kernel Image or boot image files found after all attempts"
-            ls -lR ./out
-            ls -lR "$GITHUB_WORKSPACE"
-            exit 1
-          fi
-          echo "Listing bootimgs directory:"
-          ls -l ./bootimgs/
-          echo "Listing $CONFIG directory:"
-          ls -l .
 
-      - name: Create ZIP Files for Different Formats
-        run: |
-          echo "Creating zip files for all formats..."
-          cd "$CONFIG/AnyKernel3"
+          # 1. Create bootimgs directory and copy files
+          echo "Copying kernel images..."
+          mkdir -p bootimgs
           
-          # Create and upload zip for each format
-          ZIP_NAME="${{ inputs.kernelsu_variant }}-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3.zip"
-          echo "Creating zip file: $ZIP_NAME..."
-          mv ../Image ./Image
-          zip -r "../release/$ZIP_NAME" ./*
-          rm ./Image
-          
-          ZIP_NAME="${{ inputs.kernelsu_variant }}-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3-lz4.zip"
-          echo "Creating zip file: $ZIP_NAME..."
-          mv ../Image.lz4 ./Image.lz4
-          zip -r "../release/$ZIP_NAME" ./*
-          rm ./Image.lz4
-          
-          ZIP_NAME="${{ inputs.kernelsu_variant }}-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-AnyKernel3-gz.zip"
-          echo "Creating zip file: $ZIP_NAME..."
-          mv ../Image.gz ./Image.gz
-          zip -r "../release/$ZIP_NAME" ./*
-          rm ./Image.gz
+          # Copy from dist/ (primary location)
+          cp -v ./out/android13-5.15/dist/boot.img ./bootimgs/ || { echo "ERROR: boot.img missing in dist/"; exit 1; }
+          cp -v ./out/android13-5.15/dist/boot-gz.img ./bootimgs/boot-gz.img || { echo "ERROR: boot-gz.img missing"; exit 1; }
+          cp -v ./out/android13-5.15/dist/boot-lz4.img ./bootimgs/boot-lz4.img || { echo "ERROR: boot-lz4.img missing"; exit 1; }
+
+          # Fallback: Copy from arch/arm64/boot if needed
+          [ -f ./bootimgs/Image ] || cp -v ./out/android13-5.15/common/arch/arm64/boot/Image ./bootimgs/ || { echo "ERROR: Image missing everywhere"; exit 1; }
+          [ -f ./bootimgs/Image.gz ] || cp -v ./out/android13-5.15/common/arch/arm64/boot/Image.gz ./bootimgs/ || true
+          [ -f ./bootimgs/Image.lz4 ] || cp -v ./out/android13-5.15/common/arch/arm64/boot/Image.lz4 ./bootimgs/ || true
+
+          # 2. Prepare files for AnyKernel3
+          echo "Preparing AnyKernel3 files..."
+          cp -v ./bootimgs/Image ./Image || { echo "ERROR: Failed to copy Image"; exit 1; }
+          cp -v ./bootimgs/Image.gz ./Image.gz || { echo "WARNING: Image.gz not available"; }
+          cp -v ./bootimgs/Image.lz4 ./Image.lz4 || { echo "WARNING: Image.lz4 not available"; }
+
+          # 3. Create ZIP files
+          echo "Creating ZIP archives..."
+          mkdir -p release
+          cd AnyKernel3
+
+          # Get KernelSU version or use default
+          KSUVER=$(cat ../KernelSU-Next/version 2>/dev/null || echo "v0.0.0")
+          echo "Using KernelSU version: $KSUVER"
+
+          # Create ZIP for each format (only proceed if source exists)
+          if [ -f ../Image ]; then
+            echo "Creating standard ZIP..."
+            mv ../Image ./Image
+            zip -r9 "../release/Next-$KSUVER-android13-5.15.123-AnyKernel3.zip" ./*
+            rm -f ./Image
+          fi
+
+          if [ -f ../Image.gz ]; then
+            echo "Creating GZIP ZIP..."
+            mv ../Image.gz ./Image.gz
+            zip -r9 "../release/Next-$KSUVER-android13-5.15.123-AnyKernel3-gz.zip" ./*
+            rm -f ./Image.gz
+          fi
+
+          if [ -f ../Image.lz4 ]; then
+            echo "Creating LZ4 ZIP..."
+            mv ../Image.lz4 ./Image.lz4
+            zip -r9 "../release/Next-$KSUVER-android13-5.15.123-AnyKernel3-lz4.zip" ./*
+            rm -f ./Image.lz4
+          fi
+
+          # 4. Verify outputs
+          echo "Final artifacts:"
+          ls -lh ../release/
+          [ "$(ls -A ../release/)" ] || { echo "ERROR: No ZIP files created!"; exit 1; }
+
+          echo "===== Boot Image and ZIP Creation Complete ====="
 
       - name: Android 13/14/15 boot image build script
         run: |

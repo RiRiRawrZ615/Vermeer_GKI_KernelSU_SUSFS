@@ -345,15 +345,20 @@ jobs:
             ls -l ../bootimgs
             exit 1
           fi
-          # Run AnyKernel3 script with debugging
+          # Run AnyKernel3 script with renamed image to expected name
           if [ -f ./anykernel.sh ]; then
             chmod +x ./anykernel.sh
-            # Select the first available image from dist priority and copy to zImage
-            KERNEL_IMAGE=$(ls boot.img boot-gz.img boot-lz4.img Image Image.gz Image.lz4 2>/dev/null | head -n 1)
-            if [ -n "$KERNEL_IMAGE" ]; then
-              cp "$KERNEL_IMAGE" ./zImage
-              echo "Running anykernel.sh with image: $KERNEL_IMAGE"
-              # Execute and capture output for debugging
+            # Select the first available image and rename to zImage (AK3 expected name)
+            for img in boot.img boot-gz.img boot-lz4.img Image Image.gz Image.lz4; do
+              if [ -f "./$img" ]; then
+                mv "./$img" ./zImage
+                echo "Renamed $img to zImage for AnyKernel3"
+                break
+              fi
+            done
+            if [ -f ./zImage ]; then
+              echo "Running anykernel.sh with image: zImage"
+              # Execute with output redirection for debugging
               ./anykernel.sh > ak3_output.log 2>&1
               if [ -f *.zip ]; then
                 mv *.zip "../release/$ZIP_NAME"
@@ -365,7 +370,7 @@ jobs:
                 exit 1
               fi
             else
-              echo "Error: No valid kernel image found for AnyKernel3"
+              echo "Error: No valid kernel image renamed to zImage for AnyKernel3"
               ls -l .
               exit 1
             fi

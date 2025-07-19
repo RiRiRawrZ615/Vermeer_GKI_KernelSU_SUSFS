@@ -31,39 +31,6 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Telegram Notification
-        run: |
-          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -F message_thread_id="${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}" \
-            -F text="
-            🚀 Build started for Vermeer GKI Kernel! 
-            📦 *Repository:* [${{ github.repository }}](https://github.com/${{ github.repository }})
-            🗂️ *Branch:* ${{ github.ref_name }}
-            ✏️ *Commit:* [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
-            [🔗 View GitHub Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
-            -F parse_mode="Markdown"
-
-  build-kernel-a13-5-15:
-    uses: ./.github/workflows/kernel-a13-5-15.yml
-    secrets: inherit
-    with:
-      make_release: ${{ inputs.make_release }}
-      kernelsu_branch: ${{ inputs.kernelsu_branch }}
-      kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
-
-  release:
-    if: ${{ inputs.make_release }}
-    runs-on: ubuntu-latest
-    needs: build-kernel-a13-5-15
-    env:
-      REPO_OWNER: RiRiRawrZ615
-      REPO_NAME: Vermeer_GKI_KernelSU_SUSFS
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RELEASE_NAME: "*VERMEER BUILD* GKI Kernels With KernelSU-Next ${{ inputs.kernelsu_branch }} & SUSFS v1.5.9 *VERMEER BUILD*"
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
       - name: Get commit hash or tag and generate URL for KernelSU-Next
         run: |

@@ -126,7 +126,8 @@ jobs:
         run: |
           SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
           echo "Using branch for SUSFS: $SUSFS_BRANCH"
-          git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "gki-2.0"
+          mkdir -p "$CONFIG/AnyKernel3"
+          git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "gki-2.0" "$CONFIG/AnyKernel3"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
           git clone https://github.com/RiRiRawrZ615/kernel_patches.git
 
@@ -317,32 +318,39 @@ jobs:
 
       - name: Create ZIP Files for Different Formats
         run: |
-          cd "$CONFIG"
-          mkdir -p release
-          cd ./AnyKernel3
+          cd "$CONFIG/AnyKernel3"
           ZIP_NAME="android13-5.15.123-2023-11-AnyKernel3.zip"
-          echo "Creating zip file: $ZIP_NAME..."
-          # Copy Image files to AnyKernel3 directory
-          cp -v ../Image ./Image || true
-          cp -v ../Image.gz ./Image.gz || true
-          cp -v ../Image.lz4 ./Image.lz4 || true
-          # Fallback to bootimgs directory
-          if [ ! -f ./Image ] && [ ! -f ./Image.gz ] && [ ! -f ./Image.lz4 ]; then
-            cp -v ../bootimgs/Image ./Image || true
-            cp -v ../bootimgs/Image.gz ./Image.gz || true
-            cp -v ../bootimgs/Image.lz4 ./Image.lz4 || true
+          echo "Creating zip file: $ZIP_NAME using AnyKernel3..."
+          # Failsafe: Copy files from dist directory first
+          cp -v /home/runner/work/Vermeer_GKI_KernelSU_SUSFS/Vermeer_GKI_KernelSU_SUSFS/${CONFIG}/out/android13-5.15/dist/boot.img ./ || true
+          cp -v /home/runner/work/Vermeer_GKI_KernelSU_SUSFS/Vermeer_GKI_KernelSU_SUSFS/${CONFIG}/out/android13-5.15/dist/boot-gz.img ./boot-gz.img || true
+          cp -v /home/runner/work/Vermeer_GKI_KernelSU_SUSFS/Vermeer_GKI_KernelSU_SUSFS/${CONFIG}/out/android13-5.15/dist/boot-lz4.img ./boot-lz4.img || true
+          # Fallback to bootimgs directory if dist copy fails
+          if [ ! -f ./boot.img ] && [ ! -f ./boot-gz.img ] && [ ! -f ./boot-lz4.img ]; then
+            cp -v ../bootimgs/boot.img ./ || true
+            cp -v ../bootimgs/boot-gz.img ./boot-gz.img || true
+            cp -v ../bootimgs/boot-lz4.img ./boot-lz4.img || true
           fi
-          # Ensure at least one Image file is present
-          if [ ! -f ./Image ] && [ ! -f ./Image.gz ] && [ ! -f ./Image.lz4 ]; then
-            echo "Error: No Image files found for ZIP creation in $CONFIG/AnyKernel3"
-            ls -l .
-            ls -l ..
-            ls -l ../bootimgs
+          # Run AnyKernel3 script to create the ZIP
+          if [ -f ./anykernel.sh ]; then
+            chmod +x ./anykernel.sh
+            # Use the first available boot image
+            KERNEL_IMAGE=$(ls boot.img 2>/dev/null || ls boot-gz.img 2>/dev/null || ls boot-lz4.img 2>/dev/null || true)
+            if [ -n "$KERNEL_IMAGE" ]; then
+              ./anykernel.sh -f "$KERNEL_IMAGE" "../release/$ZIP_NAME"
+            else
+              echo "Error: No boot image found for AnyKernel3 processing in $CONFIG/AnyKernel3"
+              ls -l .
+              ls -l ..
+              ls -l ../bootimgs
+              exit 1
+            fi
+          else
+            echo "Error: anykernel.sh not found in $CONFIG/AnyKernel3"
             exit 1
           fi
-          zip -r "../release/$ZIP_NAME" ./*
           # Clean up
-          rm -f ./Image ./Image.gz ./Image.lz4
+          rm -f ./boot.img ./boot-gz.img ./boot-lz4.img
           echo "Listing release directory:"
           ls -l ../release/
 

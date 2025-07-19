@@ -376,8 +376,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: ${{ env.CONFIG }}/release/*.zip
-          tag_name: release-${{ env.CURRENT_TIMESTAMP }} # Simple, safe tag
-          name: Release ${{ env.ROOT_DIR_PREFIX }}
+          tag_name: release # Simple, safe tag
+          name: Release
       - name: Upload Build Artifacts
         if: always()
         uses: actions/upload-artifact@v4

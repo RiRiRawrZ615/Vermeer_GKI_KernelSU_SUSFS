@@ -408,9 +408,19 @@ jobs:
                   mv ./kernel ./zImage
                   echo "Extracted kernel renamed to zImage"
                 else
-                  echo "Error: Failed to extract kernel from boot image"
-                  ls -l .
-                  exit 1
+                  echo "Error: Failed to extract kernel from boot image. Checking for alternative images..."
+                  for alt_img in boot-gz.img boot-lz4.img Image.gz Image.lz4; do
+                    if [ -f "./$alt_img" ]; then
+                      mv "./$alt_img" ./zImage
+                      echo "Switched to $alt_img as zImage"
+                      break
+                    fi
+                  done
+                  if [ ! -f ./zImage ]; then
+                    echo "Error: No valid kernel image after extraction attempt"
+                    ls -l .
+                    exit 1
+                  fi
                 fi
               fi
               # Execute with output redirection for debugging

@@ -160,31 +160,3 @@ jobs:
           files: ""
           name: ${{ env.RELEASE_NAME }}
           body_path: release_body.md
-
-      - name: Upload Release Assets
-        run: |
-          for file in ./downloaded-artifacts/*-kernel-*/*; do
-            if [ -d "$file" ]; then
-              continue
-            fi
-            echo "Uploading $file..."
-            gh release upload ${{ env.NEW_TAG }} "$file"
-          done
-
-      - name: Display Files Uploaded
-        run: |
-          echo "GitHub release created with the following files:"
-          ls ./downloaded-artifacts/**/*
-
-      - name: Send Telegram Notification
-        run: |
-          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-            -F chat_id="${{ secrets.TELEGRAM_CHAT_ID }}" \
-            -F message_thread_id="${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}" \
-            -F text="
-            🌽 *New Vermeer Kernel Release Uploaded*  
-            📦 *Repository:* [${{ github.repository }}](https://github.com/${{ github.repository }})  
-            🗂️ *Branch:* ${{ github.ref_name }}  
-            ✏️ *Commit:* [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})  
-            [🔗 View GitHub Release](https://github.com/${{ github.repository }}/releases/tag/${{ env.NEW_TAG }})" \
-            -F parse_mode="Markdown"

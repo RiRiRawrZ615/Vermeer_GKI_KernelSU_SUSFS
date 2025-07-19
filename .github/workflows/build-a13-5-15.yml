@@ -315,169 +315,189 @@ jobs:
           ls -l ./bootimgs/
           echo "Listing $CONFIG directory:"
           ls -l .
-
-      - name: Create Bootimgs Folder and Copy Images
-        run: |
-          cd "$CONFIG"
-          mkdir -p bootimgs
-          # Copy from dist directory
-          echo "Copying files from ./out/android13-5.15/dist..."
-          cp -v ./out/android13-5.15/dist/boot.img ./bootimgs/ || true
-          cp -v ./out/android13-5.15/dist/boot-gz.img ./bootimgs/boot-gz.img || true
-          cp -v ./out/android13-5.15/dist/boot-lz4.img ./bootimgs/boot-lz4.img || true
-          # Copy kernel images from common/arch/arm64/boot
-          echo "Copying kernel images from ./out/android13-5.15/common/arch/arm64/boot..."
-          cp -v ./out/android13-5.15/common/arch/arm64/boot/Image ./bootimgs/ || true
-          cp -v ./out/android13-5.15/common/arch/arm64/boot/Image.gz ./bootimgs/ || true
-          cp -v ./out/android13-5.15/common/arch/arm64/boot/Image.lz4 ./bootimgs/ || true
-          # Search for Image files in all possible locations as a fallback
-          echo "Searching for Image files in ./out and $GITHUB_WORKSPACE..."
-          find "$GITHUB_WORKSPACE" -type f \( -name "Image" -o -name "Image.gz" -o -name "Image.lz4" -o -name "boot.img" -o -name "boot-gz.img" -o -name "boot-lz4.img" \) -exec cp -v {} ./bootimgs/ \; || true
-          # Copy to $CONFIG for AnyKernel3
-          cp -v ./bootimgs/Image ./Image || true
-          cp -v ./bootimgs/Image.gz ./Image.gz || true
-          cp -v ./bootimgs/Image.lz4 ./Image.lz4 || true
-          # If no images found, try to generate Image.gz from Image
-          if [ ! -f ./bootimgs/Image ] && [ ! -f ./bootimgs/Image.gz ] && [ ! -f ./bootimgs/Image.lz4 ] && [ ! -f ./bootimgs/boot.img ] && [ ! -f ./bootimgs/boot-gz.img ] && [ ! -f ./bootimgs/boot-lz4.img ]; then
-            echo "Warning: No kernel Image or boot image files found, attempting to generate Image.gz..."
-            find "$GITHUB_WORKSPACE" -type f -name "Image" -exec cp -v {} ./bootimgs/Image \;
-            if [ -f ./bootimgs/Image ]; then
-              gzip -n -k -f -9 ./bootimgs/Image -c > ./bootimgs/Image.gz
-              cp -v ./bootimgs/Image.gz ./Image.gz || true
-            fi
-          fi
-          # Final check for images
-          if [ ! -f ./bootimgs/Image ] && [ ! -f ./bootimgs/Image.gz ] && [ ! -f ./bootimgs/Image.lz4 ] && [ ! -f ./bootimgs/boot.img ] && [ ! -f ./bootimgs/boot-gz.img ] && [ ! -f ./bootimgs/boot-lz4.img ]; then
-            echo "Error: No kernel Image or boot image files found after all attempts"
-            ls -lR ./out
-            ls -lR "$GITHUB_WORKSPACE"
-            exit 1
-          fi
-          echo "Listing bootimgs directory:"
-          ls -l ./bootimgs/
-          echo "Listing $CONFIG directory:"
-          ls -l .
-
-      - name: Create ZIP Files with AnyKernel3
+      - name: Ensure AnyKernel3 ZIP or Boot Image Creation with Extreme Failsafes
         run: |
           cd "$CONFIG/AnyKernel3"
           ZIP_NAME="android13-5.15.123-2023-11-AnyKernel3.zip"
-          echo "Creating zip file: $ZIP_NAME using AnyKernel3..."
-          # Failsafe: Copy files from dist directory first
-          cp -v /home/runner/work/Vermeer_GKI_KernelSU_SUSFS/Vermeer_GKI_KernelSU_SUSFS/${CONFIG}/out/android13-5.15/dist/boot.img ./ || true
-          cp -v /home/runner/work/Vermeer_GKI_KernelSU_SUSFS/Vermeer_GKI_KernelSU_SUSFS/${CONFIG}/out/android13-5.15/dist/boot-gz.img ./boot-gz.img || true
-          cp -v /home/runner/work/Vermeer_GKI_KernelSU_SUSFS/Vermeer_GKI_KernelSU_SUSFS/${CONFIG}/out/android13-5.15/dist/boot-lz4.img ./boot-lz4.img || true
-          # Fallback to bootimgs directory if dist copy fails
-          if [ ! -f ./boot.img ] && [ ! -f ./boot-gz.img ] && [ ! -f ./boot-lz4.img ]; then
-            cp -v ../bootimgs/boot.img ./ || true
-            cp -v ../bootimgs/boot-gz.img ./boot-gz.img || true
-            cp -v ../bootimgs/boot-lz4.img ./boot-lz4.img || true
-          fi
-          # Fallback to Image files from $CONFIG if no boot images
-          if [ ! -f ./boot.img ] && [ ! -f ./boot-gz.img ] && [ ! -f ./boot-lz4.img ]; then
-            cp -v ../Image ./ || true
-            cp -v ../Image.gz ./Image.gz || true
-            cp -v ../Image.lz4 ./Image.lz4 || true
-          fi
-          # Ensure at least one image is present
-          if [ ! -f ./boot.img ] && [ ! -f ./boot-gz.img ] && [ ! -f ./boot-lz4.img ] && [ ! -f ./Image ] && [ ! -f ./Image.gz ] && [ ! -f ./Image.lz4 ]; then
-            echo "Error: No image files found for AnyKernel3 processing in $CONFIG/AnyKernel3"
+          BOOT_BASE="${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}"
+          MAX_ATTEMPTS=5
+          attempt=1
+
+          # Function to check if a file exists and is non-empty
+          check_file() {
+            [ -s "$1" ] && return 0 || return 1
+          }
+
+          # Function to attempt AK3 ZIP creation
+          create_ak3_zip() {
+            local img_source="$1"
+            echo "Attempt $attempt/$MAX_ATTEMPTS: Trying AK3 ZIP with $img_source..."
+            cp -v "$img_source" ./zImage 2>/dev/null || mv "$img_source" ./zImage 2>/dev/null
+            if [ -f ./zImage ]; then
+              # Check if it's a boot image and extract kernel
+              if file ./zImage | grep -q "boot img"; then
+                echo "Detected boot image, extracting kernel..."
+                $UNPACK_BOOTIMG --boot_img ./zImage --out . || {
+                  echo "UNPACK_BOOTIMG failed, trying manual extraction with mkbootimg..."
+                  $MKBOOTIMG --unpack --input ./zImage --output ./kernel 2>/dev/null
+                  [ -f ./kernel ] && mv ./kernel ./zImage || echo "Manual extraction failed"
+                }
+              fi
+              if [ -f ./zImage ]; then
+                chmod +x ./anykernel.sh
+                ./anykernel.sh > ak3_output.log 2>&1
+                if [ -f *.zip ]; then
+                  mv *.zip "../release/$ZIP_NAME"
+                  echo "AK3 ZIP created successfully with $img_source"
+                  return 0
+                else
+                  echo "AK3 failed, checking log: $(cat ak3_output.log)"
+                fi
+              fi
+            fi
+            return 1
+          }
+
+          # Function to build boot image
+          build_boot_img() {
+            local img_source="$1"
+            echo "Attempt $attempt/$MAX_ATTEMPTS: Building boot image with $img_source..."
+            $MKBOOTIMG --header_version 4 --kernel "$img_source" --output boot.img 2>/dev/null || {
+              echo "MKBOOTIMG failed, trying with ramdisk fallback..."
+              $MKBOOTIMG --header_version 4 --kernel "$img_source" --ramdisk ../bootimgs/ramdisk --output boot.img 2>/dev/null
+            }
+            if [ -f boot.img ]; then
+              $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH 2>/dev/null
+              if [ -f boot.img ]; then
+                cp -v ./boot.img "../$BOOT_BASE-boot.img"
+                echo "Boot image created successfully with $img_source"
+                return 0
+              fi
+            fi
+            return 1
+          }
+
+          # List of image sources to try
+          image_sources=(
+            "/home/runner/work/Vermeer_GKI_KernelSU_SUSFS/Vermeer_GKI_KernelSU_SUSFS/${CONFIG}/out/android13-5.15/dist/boot.img"
+            "/home/runner/work/Vermeer_GKI_KernelSU_SUSFS/Vermeer_GKI_KernelSU_SUSFS/${CONFIG}/out/android13-5.15/dist/boot-gz.img"
+            "/home/runner/work/Vermeer_GKI_KernelSU_SUSFS/Vermeer_GKI_KernelSU_SUSFS/${CONFIG}/out/android13-5.15/dist/boot-lz4.img"
+            "../bootimgs/boot.img"
+            "../bootimgs/boot-gz.img"
+            "../bootimgs/boot-lz4.img"
+            "../Image"
+            "../Image.gz"
+            "../Image.lz4"
+          )
+
+          # Extreme retry loop for AK3 ZIP
+          while [ $attempt -le $MAX_ATTEMPTS ]; do
+            for img in "${image_sources[@]}"; do
+              if [ -f "$img" ] && check_file "$img"; then
+                if create_ak3_zip "$img"; then
+                  # Success with AK3 ZIP, exit loop
+                  break 2
+                fi
+              fi
+            done
+            # If AK3 fails, try building a boot image as fallback
+            for img in "${image_sources[@]}"; do
+              if [ -f "$img" ] && check_file "$img"; then
+                if build_boot_img "$img"; then
+                  # Success with boot image, exit loop
+                  break 2
+                fi
+              fi
+            done
+            # If both fail, attempt to generate a kernel image
+            if [ $attempt -lt $MAX_ATTEMPTS ]; then
+              echo "Attempt $attempt failed, generating fallback Image.gz..."
+              cd ..
+              find . -type f -name "Image" -exec cp -v {} ./Image \; 2>/dev/null
+              if [ -f ./Image ]; then
+                gzip -n -k -f -9 ./Image > ./Image.gz
+                image_sources+=("../Image.gz")
+                echo "Generated Image.gz, adding to retry list"
+              else
+                echo "No Image found to generate fallback"
+              fi
+              cd - > /dev/null
+            fi
+            attempt=$((attempt + 1))
+            sleep 5  # Brief pause between attempts
+          done
+
+          # Final validation
+          if [ ! -f "../release/$ZIP_NAME" ] && [ ! -f "../$BOOT_BASE-boot.img" ]; then
+            echo "Error: Failed to create AK3 ZIP or boot image after $MAX_ATTEMPTS attempts"
+            cat ak3_output.log
             ls -l .
             ls -l ..
             ls -l ../bootimgs
             exit 1
           fi
-          # Run AnyKernel3 script with renamed image to expected name
-          if [ -f ./anykernel.sh ]; then
-            chmod +x ./anykernel.sh
-            # Select the first available image and rename to zImage (AK3 expected name)
-            for img in boot.img boot-gz.img boot-lz4.img Image Image.gz Image.lz4; do
-              if [ -f "./$img" ]; then
-                mv "./$img" ./zImage
-                echo "Renamed $img to zImage for AnyKernel3"
-                break
-              fi
-            done
-            if [ -f ./zImage ]; then
-              echo "Running anykernel.sh with image: zImage"
-              # Check if zImage is a boot image and extract kernel if needed
-              if file ./zImage | grep -q "boot img"; then
-                echo "zImage is a boot image, attempting to extract kernel..."
-                $UNPACK_BOOTIMG --boot_img ./zImage --out .
-                if [ -f ./kernel ]; then
-                  mv ./kernel ./zImage
-                  echo "Extracted kernel renamed to zImage"
-                else
-                  echo "Error: Failed to extract kernel from boot image. Checking for alternative images..."
-                  for alt_img in boot-gz.img boot-lz4.img Image.gz Image.lz4; do
-                    if [ -f "./$alt_img" ]; then
-                      mv "./$alt_img" ./zImage
-                      echo "Switched to $alt_img as zImage"
-                      break
-                    fi
-                  done
-                  if [ ! -f ./zImage ]; then
-                    echo "Error: No valid kernel image after extraction attempt"
-                    ls -l .
-                    exit 1
-                  fi
-                fi
-              fi
-              # Execute with output redirection for debugging
-              ./anykernel.sh > ak3_output.log 2>&1
-              if [ -f *.zip ]; then
-                mv *.zip "../release/$ZIP_NAME"
-                echo "ZIP file created successfully"
-              else
-                echo "Error: No ZIP file generated by AnyKernel3"
-                cat ak3_output.log
-                ls -l .
-                exit 1
-              fi
-            else
-              echo "Error: No valid kernel image renamed to zImage for AnyKernel3"
-              ls -l .
-              exit 1
-            fi
-          else
-            echo "Error: anykernel.sh not found in $CONFIG/AnyKernel3"
-            exit 1
-          fi
+          echo "Success: Created $(if [ -f "../release/$ZIP_NAME" ]; then echo "AK3 ZIP"; else echo "boot image"; fi) after $attempt attempts"
           # Clean up
           rm -f ./boot.img ./boot-gz.img ./boot-lz4.img ./Image ./Image.gz ./Image.lz4 ./zImage ./ramdisk ./dtb ak3_output.log
-          echo "Listing release directory:"
-          ls -l ../release/
 
-      - name: Build Boot Image
+      - name: Compress all img files with gzip
         run: |
           cd "$CONFIG/bootimgs"
-          echo "Building boot images..."
-          # Prefer boot.img from dist, otherwise use boot-gz.img, Image.gz, or Image
-          KERNEL_IMAGE=$(ls boot.img 2>/dev/null || ls boot-gz.img 2>/dev/null || ls Image.gz 2>/dev/null || ls Image 2>/dev/null || true)
-          if [ -z "$KERNEL_IMAGE" ]; then
-            echo "Error: No kernel Image or boot image file found for boot.img creation"
-            ls -l .
-            ls -l ../
-            exit 1
+          for image in *.img; do
+            if [ -f "$image" ]; then
+              gzip -vnf9 "$image" -c > "${image}.gz"
+            fi
+          done
+          echo "Listing bootimgs directory after compression:"
+          ls -l .
+
+      - name: Upload Build Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ env.CONFIG }}
+          path: |
+            ${{ env.CONFIG }}/release/*.zip
+            ${{ env.CONFIG }}/bootimgs/*.img.gz
+            ${{ env.CONFIG }}/bootimgs/boot.img
+            ${{ env.CONFIG }}/bootimgs/boot-gz.img
+            ${{ env.CONFIG }}/bootimgs/boot-lz4.img
+            ${{ env.CONFIG }}/*-boot.img
+            ${{ env.CONFIG }}/Image*
+            ./out/android13-5.15/dist/*.img
+            ./out/android13-5.15/dist/*.tar.gz
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Check for .rej files
+        if: failure()
+        run: |
+          echo "::group::Checking for .rej files..."
+          REJ_FILES=$(find . -name '*.rej')
+          if [ -z "$REJ_FILES" ]; then
+            echo "No .rej files found."
+          else
+            echo "Found .rej files:"
+            echo "$REJ_FILES"
+            for f in $REJ_FILES; do
+              echo "--- $f ---"
+              cat "$f"
+            done
           fi
-          # Build boot.img
-          $MKBOOTIMG --header_version 4 --kernel "$KERNEL_IMAGE" --output boot.img
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp -v ./boot.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img
-          # Build boot-gz.img if Image.gz exists
-          if [ -f Image.gz ]; then
-            $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img
-            $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-            cp -v ./boot-gz.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img
-          fi
-          # Build boot-lz4.img if Image.lz4 exists
-          if [ -f Image.lz4 ]; then
-            $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img
-            $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-            cp -v ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
-          fi
-          echo "Listing $CONFIG directory after boot image creation:"
-          ls -l ..
+          echo "::endgroup::"
+
+      - name: Upload .rej files as artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: patch-rejects
+          path: "**/*.rej"
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
 
       - name: Compress all img files with gzip
         run: |

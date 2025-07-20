@@ -1,4 +1,4 @@
-name: Android 13 5.15 Kernel Build (Experimental)
+name: Android 13 5.15 Kernel Build (EXP STABLE)
 
 permissions:
   contents: write

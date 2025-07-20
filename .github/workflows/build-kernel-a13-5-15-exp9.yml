@@ -1,4 +1,4 @@
-name: Android 13 5.15 Kernel Build (EXP8)
+name: Android 13 5.15 Kernel Build (EXP9)
 
 permissions:
   contents: write
@@ -225,8 +225,7 @@ jobs:
           cd "$CONFIG"
           if [ -z "${{ inputs.kernelsu_commit }}" ]; then
             echo "Applying KernelSU patches..."
-            cd KernelSU-Next
-            for patch in ./kernel_patches/next/susfs_fix_patches/v1.5.9/*.patch; do
+            for patch in ../kernel_patches/next/susfs_fix_patches/v1.5.9/*.patch; do
               if [ ! -f "$patch" ]; then
                 echo "Error: Patch $patch not found. Aborting."
                 exit 1

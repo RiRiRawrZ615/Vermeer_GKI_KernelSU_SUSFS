@@ -1,4 +1,4 @@
-name: Build Kernel - Android 13 5.15 MOD TEST
+name: Build Kernel - Android 13 5.15 QSTR
 
 permissions:
   contents: write

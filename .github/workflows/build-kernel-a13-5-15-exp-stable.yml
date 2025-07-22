@@ -190,12 +190,13 @@ jobs:
           cd "$CONFIG"
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
           cd common
-          patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true         
-          curl -Ls "https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/random_qstr.patch" | patch -p1 --forward 
+          patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true              
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           echo "Applying SUSFS patches for KernelSU Next..."
           cd ./KernelSU-Next
+          cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/random_qstr.patch ./
+          patch -p1 --forward --fuzz=3 < random_qstr.patch
           cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
           patch -p1 --forward --fuzz=3 < 10_enable_susfs_for_ksu.patch || true
           cp ../../kernel_patches/next/susfs_fix_patches/v1.5.9/fix_apk_sign.c.patch ./

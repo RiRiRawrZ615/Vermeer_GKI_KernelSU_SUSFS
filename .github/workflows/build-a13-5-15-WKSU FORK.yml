@@ -1,4 +1,4 @@
-name: Build Kernel - Android 13 5.15 QSTR
+name: Build Kernel - Android 13 5.15 WKSU
 
 permissions:
   contents: write

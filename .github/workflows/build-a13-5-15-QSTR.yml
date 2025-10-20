@@ -216,7 +216,28 @@ jobs:
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           
           cd common
+          
+          # Fake kernel patch to fix failures
+          fake_patched=0
+          if [ "${{ inputs.android_version }}" = "android13" ] && [ "${{ inputs.kernel_version }}" = "5.15" ]; then
+            if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
+              echo "vma_pages Line not found. Fake Patching!"
+              fake_patched=1
+            fi
+          fi
+          
           patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
+          
+          # Revert Fake kernel patch
+          if [ "$fake_patched" = 1 ]; then
+            if [ "${{ inputs.android_version }}" = "android13" ] && [ "${{ inputs.kernel_version }}" = "5.15" ]; then
+              if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
+                echo "vma_pages Line found. Revert Fake Patching!"
+                sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
+              fi
+            fi
+          fi
+          
           curl -Ls "https://raw.githubusercontent.com/fatalcoder524/kernel_patches_additional/refs/heads/main/random_qstr.patch" | patch -p1 --forward
           cd ..
           echo "Applying SUSFS patches for KernelSU Next..."

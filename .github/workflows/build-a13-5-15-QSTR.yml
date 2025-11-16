@@ -206,7 +206,7 @@ jobs:
         run: |
           cd "$CONFIG"
           echo "Adding KernelSU Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev/kernel/setup.sh" | bash -s dev
 
       - name: Apply SUSFS Patches for KernelSU Next
         run: |
@@ -252,12 +252,6 @@ jobs:
           patch -p1 --forward < fix_sucompat.c.patch
           cp ../../kernel_patches/next/susfs_fix_patches/v1.5.12/fix_kernel_compat.c.patch ./
           patch -p1 --forward < fix_kernel_compat.c.patch          
-
-      - name: Apply Hooks Patches
-        run: |
-          cd "$CONFIG/common"
-          cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
-          patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
 
       - name: Apply Hide Stuff Patches
         run: |

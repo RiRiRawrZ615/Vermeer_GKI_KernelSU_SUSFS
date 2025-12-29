@@ -113,6 +113,7 @@ jobs:
           ccache --max-size=2G
           ccache --set-config=compression=true
           echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+
       - name: Restore ccache from cache
         uses: actions/cache@v4
         with:
@@ -120,6 +121,7 @@ jobs:
           key: ${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}-ccache-${{ github.sha }}
           restore-keys: |
             ${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}-ccache-
+
       - name: Cache toolchain
         id: cache-toolchain
         uses: actions/cache@v4
@@ -136,11 +138,13 @@ jobs:
           BRANCH=main-kernel-build-2024
           git clone $AOSP_MIRROR/kernel/prebuilts/build-tools -b $BRANCH --depth 1 kernel-build-tools
           git clone $AOSP_MIRROR/platform/system/tools/mkbootimg -b $BRANCH --depth 1 mkbootimg
+
       - name: Set environment variables
         run: |
           echo "AVBTOOL=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/bin/avbtool" >> $GITHUB_ENV
           echo "MKBOOTIMG=$GITHUB_WORKSPACE/mkbootimg/mkbootimg.py" >> $GITHUB_ENV
           echo "UNPACK_BOOTIMG=$GITHUB_WORKSPACE/mkbootimg/unpack_bootimg.py" >> $GITHUB_ENV
+
       - name: Set boot sign key
         env:
           BOOT_SIGN_KEY: ${{ secrets.BOOT_SIGN_KEY }}
@@ -152,12 +156,14 @@ jobs:
             echo "BOOT_SIGN_KEY is not set. Exiting..."
             exit 1
           fi
+
       - name: Install Repo
         run: |
           mkdir -p ./git-repo
           curl https://storage.googleapis.com/git-repo-downloads/repo > ./git-repo/repo
           chmod a+rx ./git-repo/repo
           echo "REPO=$GITHUB_WORKSPACE/./git-repo/repo" >> $GITHUB_ENV
+
       - name: Clone AnyKernel3 and Other Dependencies
         run: |
           SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
@@ -167,6 +173,7 @@ jobs:
           git clone https://gitlab.com/simonpunk/susfs4ksu.git
           git checkout a6fc93cede508248d7e88c00bb93f59c20df4fb9
           git clone https://github.com/RiRiRawrZ615/kernel_patches.git
+
       - name: Initialize and Sync Kernel Source
         run: |
           mkdir -p "$CONFIG"
@@ -181,6 +188,7 @@ jobs:
           fi
           $REPO --version
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
+
       - name: Determine the branch for KernelSU
         run: |
           if [ "${{ inputs.kernelsu_branch }}" == "Stable" ]; then
@@ -193,11 +201,13 @@ jobs:
             echo "Error: Custom branch not provided for 'Other'" >&2
             exit 1
           fi
-      - name: Add KernelSU
+
+      - name: Add KernelSU Next
         run: |
           cd "$CONFIG"
           echo "Adding KernelSU Next..."
           curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+
       - name: Apply SUSFS Patches for KernelSU Next
         run: |
           cd "$CONFIG"
@@ -233,42 +243,31 @@ jobs:
           echo "Applying SUSFS patches for KernelSU Next..."
           cd ./KernelSU-Next
           cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
+          
+          # Apply the main SUSFS patch (ignore failure if already applied)
           patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
+          
+          for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
+            echo "Patching file: $file with fix_$file.patch"
+            patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.0.0/fix_$file.patch"
+          done
+           patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.0.0/ksu_toolkit.patch"
+          
+          # Finally, apply the overwrite hook mode patch (usually last)
+          patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.0.0/overwrite_hook_mode.patch" || true
 
-# Apply the main SUSFS patch (ignore failure if already applied)
-patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
-
-# Loop over any .rej files created in the kernel/ subdirectory
-# (up to 2 levels deep), extract the original filename from .rej,
-# and apply the corresponding fix patch from the susfs_version folder
-for rej_file in $(find ./kernel -maxdepth 2 -name "*.rej"); do
-    # Extract the base filename without .rej extension
-    file=$(basename "$rej_file" .rej)
-    
-    fix_patch="../../kernel_patches/next/susfs_fix_patches/$susfs_version/fix_$file.patch"
-    
-    echo "Found rejected hunk for $file; applying fix patch: $fix_patch"
-    
-    if [ -f "$fix_patch" ]; then
-        patch -p1 --forward < "$fix_patch" || echo "Failed to apply $fix_patch (check manually)"
-    else
-        echo "Warning: fix patch not found: $fix_patch"
-    fi
-done
-
-# Finally, apply the overwrite hook mode patch (usually last)
-patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/$susfs_version/overwrite_hook_mode.patch" || true
-        
       - name: Apply Hooks Patches
         run: |
           cd "$CONFIG/common"
           cp ../../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
           patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch
+
       - name: Apply Hide Stuff Patches
         run: |
           cd "$CONFIG/common"
           cp ../../kernel_patches/69_hide_stuff.patch ./
           patch -p1 -F 3 < 69_hide_stuff.patch
+
       - name: Add Configuration Settings
         run: |
           cd "$CONFIG"
@@ -304,6 +303,7 @@ patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/$susfs_versio
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
+
       - name: Config Kernel Name
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -311,6 +311,7 @@ patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/$susfs_versio
           perl -pi -e 's|echo "\$res"|echo "-android13-8-00008-g3ca6a2912c7e-ab11087001"|' ./common/scripts/setlocalversion
           # Run perl command to modify UTS_VERSION
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Nov 11 06:58:10 UTC 2023"}' ./common/scripts/mkcompile_h
+
       - name: Build with retry
         uses: nick-fields/retry@v3
         with:
@@ -327,6 +328,7 @@ patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/$susfs_versio
               tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
             fi
             ccache --show-stats
+
       - name: Create Boot Images and ZIP Files
         run: |
           echo "===== Starting Boot Image and ZIP Creation ====="
@@ -379,6 +381,7 @@ patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/$susfs_versio
           ls -lh ../release/
           [ "$(ls -A ../release/)" ] || { echo "ERROR: No ZIP files created!"; exit 1; }
           echo "===== Boot Image and ZIP Creation Complete ====="
+
       - name: Android 13/14/15 boot image build script
         run: |
           cd "$CONFIG/bootimgs"
@@ -399,6 +402,7 @@ patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/$susfs_versio
           $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
           cp ./boot-lz4.img "../${{ inputs.kernelsu_variant }}-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img"
+
       - name: Compress all img files with gzip
         run: |
           cd "$CONFIG/bootimgs"
@@ -409,6 +413,7 @@ patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/$susfs_versio
           done
           echo "Listing bootimgs directory after compression:"
           ls -l .
+
       - name: Create Release
         if: ${{ inputs.make_release }}
         id: create_release
@@ -458,7 +463,7 @@ patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/$susfs_versio
             done
           fi
           echo "::endgroup::"
-          
+
       - name: Upload .rej files as artifact
         if: failure()
         uses: actions/upload-artifact@v4

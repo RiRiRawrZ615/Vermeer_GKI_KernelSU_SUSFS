@@ -170,8 +170,7 @@ jobs:
           echo "Using branch for SUSFS: $SUSFS_BRANCH"
           mkdir -p "$CONFIG/AnyKernel3"
           git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "gki-2.0" "$CONFIG/AnyKernel3"
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git
-          git checkout a6fc93cede508248d7e88c00bb93f59c20df4fb9
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "gki-android13-5.15"
           git clone https://github.com/RiRiRawrZ615/kernel_patches.git
 
       - name: Initialize and Sync Kernel Source
@@ -206,12 +205,12 @@ jobs:
         run: |
           cd "$CONFIG"
           echo "Adding KernelSU Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/dev/kernel/setup.sh" | bash -s dev
 
       - name: Apply SUSFS Patches for KernelSU Next
         run: |
           cd "$CONFIG"
-          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/              
+          cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
           

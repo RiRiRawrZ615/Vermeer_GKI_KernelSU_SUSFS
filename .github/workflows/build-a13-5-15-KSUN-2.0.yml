@@ -229,7 +229,7 @@ jobs:
           # Revert Fake kernel patch
           if [ "$fake_patched" = 1 ]; then
             if [ "${{ inputs.android_version }}" = "android13" ] && [ "${{ inputs.kernel_version }}" = "5.15" ]; then
-              if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
+              if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
                 echo "vma_pages Line found. Revert Fake Patching!"
                 sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
               fi

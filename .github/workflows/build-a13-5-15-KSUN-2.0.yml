@@ -32,21 +32,16 @@ on:
         required: true
         type: string
         default: "2023-11"
-      kernelsu_variant:
-        description: 'KernelSU variant'
+      kernelsu_branch:
+        description: 'KernelSU branch or hash (dev, legacy, stable or hash)'
         required: true
         type: string
-        default: "Dev"
-      kernelsu_branch:
-        description: 'KernelSU branch (Stable, Dev, or Other)'
-        required: false
+        default: "dev"
+      susfs_branch:
+        description: 'SusFS branch or hash (gki-android13-5.15 or hash)'
+        required: true
         type: string
-        default: "Dev"
-      kernelsu_branch_other:
-        description: 'Custom KernelSU branch (required if kernelsu_branch is Other)'
-        required: false
-        type: string
-        default: ""
+        default: "gki-android13-5.15"
   workflow_call:
     inputs:
       make_release:
@@ -65,17 +60,14 @@ on:
       os_patch_level:
         required: true
         type: string
-      kernelsu_variant:
+      kernelsu_branch:
         required: true
         type: string
-      kernelsu_branch:
-        required: false
+        default: "dev"
+      susfs_branch:
+        required: true
         type: string
-        default: "Dev"
-      kernelsu_branch_other:
-        required: false
-        type: string
-        default: ""
+        default: "gki-android13-5.15"
 
 jobs:
   build-gki:
@@ -165,12 +157,34 @@ jobs:
 
       - name: Clone AnyKernel3 and Other Dependencies
         run: |
-          SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
+          if [[ -z "${{ inputs.susfs_branch }}" ]]; then
+            SUSFS_BRANCH="gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}"
+          else
+            SUSFS_BRANCH="${{ inputs.susfs_branch }}"
+          fi
           echo "Using branch for SUSFS: $SUSFS_BRANCH"
           mkdir -p "$CONFIG/AnyKernel3"
           git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "gki-2.0" "$CONFIG/AnyKernel3"
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
           git clone https://github.com/RiRiRawrZ615/kernel_patches.git
+          
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git
+          cd susfs4ksu
+          
+          if git rev-parse --verify "origin/$SUSFS_BRANCH" >/dev/null 2>&1; then
+            # It's a remote branch
+            echo "✅ Checking out remote branch: $SUSFS_BRANCH"
+            git checkout "$SUSFS_BRANCH"
+          elif git rev-parse --verify "$SUSFS_BRANCH" >/dev/null 2>&1; then
+            # It's a local ref or commit hash
+            echo "✅ Checking out ref/commit: $SUSFS_BRANCH"
+            git checkout "$SUSFS_BRANCH"
+          else
+            echo "::error::SUSFS branch or commit '$SUSFS_BRANCH' not found in repository"
+            echo ""
+            echo "Available remote branches:"
+            git branch -r | head -n 20
+            exit 1
+          fi
 
       - name: Initialize and Sync Kernel Source
         run: |
@@ -187,24 +201,11 @@ jobs:
           $REPO --version
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Determine the branch for KernelSU
-        run: |
-          if [ "${{ inputs.kernelsu_branch }}" == "Stable" ]; then
-            echo "BRANCH=-" >> $GITHUB_ENV
-          elif [ "${{ inputs.kernelsu_branch }}" == "Dev" ] || [ -z "${{ inputs.kernelsu_branch }}" ]; then
-            echo "BRANCH=-s dev" >> $GITHUB_ENV
-          elif [ "${{ inputs.kernelsu_branch }}" == "Other" ] && [ -n "${{ inputs.kernelsu_branch_other }}" ]; then
-            echo "BRANCH=-s ${{ inputs.kernelsu_branch_other }}" >> $GITHUB_ENV
-          else
-            echo "Error: Custom branch not provided for 'Other'" >&2
-            exit 1
-          fi
-
       - name: Add KernelSU Next
         run: |
           cd "$CONFIG"
           echo "Adding KernelSU Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/stable/kernel/setup.sh" | bash -s dev
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/stable/kernel/setup.sh" | bash -s "${{ inputs.kernelsu_branch }}"
 
       - name: Apply SUSFS Patches for KernelSU Next
         run: |
@@ -247,10 +248,10 @@ jobs:
             echo "Patching file: $file with fix_$file.patch"
             patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.1.0/fix_$file.patch"
           done
-           patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.1.0/ksu_toolkit.patch"
-          
-          # Finally, apply the overwrite hook mode patch (usually last)
+          echo "Patching Hook Mode!"
           patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.1.0/overwrite_hook_mode.patch" || true
+          echo "Patching KSU_TOOLKIT Support for SusFS kernel!"
+          patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.1.0/ksu_toolkit.patch"
 
       - name: Add Configuration Settings
         run: |
@@ -375,17 +376,17 @@ jobs:
           echo "Building boot.img"
           $MKBOOTIMG --header_version 4 --kernel Image --output boot.img
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp ./boot.img "../${{ inputs.kernelsu_variant }}-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img"
+          cp ./boot.img "../KSUN-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img"
           
           echo "Building boot-gz.img"
           $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp ./boot-gz.img "../${{ inputs.kernelsu_variant }}-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img"
+          cp ./boot-gz.img "../KSUN-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img"
           
           echo "Building boot-lz4.img"
           $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img
           $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
-          cp ./boot-lz4.img "../${{ inputs.kernelsu_variant }}-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img"
+          cp ./boot-lz4.img "../KSUN-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img"
 
       - name: Compress all img files with gzip
         run: |
@@ -406,8 +407,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: ${{ env.CONFIG }}/release/*.zip
-          tag_name: ${{ inputs.kernelsu_variant }}-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}
-          name: Release ${{ inputs.kernelsu_variant }}-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}
+          tag_name: KSUN-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}
+          name: Release KSUN-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}
           draft: false
           prerelease: false
 

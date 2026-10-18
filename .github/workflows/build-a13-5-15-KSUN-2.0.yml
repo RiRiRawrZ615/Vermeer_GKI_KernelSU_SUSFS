@@ -1,4 +1,4 @@
-name: Build Kernel - Android 13 5.15 KSUN 2.0
+name: Build Kernel - Android 13 5.15 KSUN 2.0 (pershoot dev-susfs)
 
 permissions:
   contents: write
@@ -33,10 +33,10 @@ on:
         type: string
         default: "2023-11"
       kernelsu_branch:
-        description: 'KernelSU branch or hash (dev, legacy, stable or hash)'
+        description: 'pershoot/KernelSU-Next branch or hash (dev-susfs or hash)'
         required: true
         type: string
-        default: "dev"
+        default: "dev-susfs"
       susfs_branch:
         description: 'SusFS branch or hash (gki-android13-5.15 or hash)'
         required: true
@@ -63,7 +63,7 @@ on:
       kernelsu_branch:
         required: true
         type: string
-        default: "dev"
+        default: "dev-susfs"
       susfs_branch:
         required: true
         type: string
@@ -186,6 +186,20 @@ jobs:
             exit 1
           fi
 
+          # Pershoot's SUSFS fixes, cherry-picked onto the SUSFS checkout for
+          # KernelSU-Next (the same two commits the WildKernels GKI repo applies
+          # to every next build; they touch only kernel_patches/fs/susfs.c):
+          #   6387756 fs/susfs: Allow core to be built with no features
+          #   161c058 fs/susfs: Implement SuSFS and Toolkit coexistence
+          # Fail loud: a failed pick must kill the job, never march on.
+          git config user.email "ci@localhost"
+          git config user.name "CI"
+          git fetch https://gitlab.com/pershoot/susfs4ksu.git \
+            6387756d64b3ab9ececefc4523627a9ee05a7519 \
+            161c058fed5544a6573d87124f346dadd5c4962d
+          git cherry-pick 6387756d64b3ab9ececefc4523627a9ee05a7519
+          git cherry-pick 161c058fed5544a6573d87124f346dadd5c4962d
+
       - name: Initialize and Sync Kernel Source
         run: |
           mkdir -p "$CONFIG"
@@ -201,12 +215,17 @@ jobs:
           $REPO --version
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
-      - name: Add KernelSU Next
+      - name: Add KernelSU Next (pershoot dev-susfs)
         run: |
           cd "$CONFIG"
-          echo "Adding KernelSU Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/dev/kernel/setup.sh" | bash -s "${{ inputs.kernelsu_branch }}"
-          
+          echo "Adding KernelSU Next from pershoot's fork..."
+          # Same source the WildKernels GKI repo uses for KernelSU-Next + SUSFS:
+          # pershoot/KernelSU-Next dev-susfs tip. His setup.sh self-references
+          # the fork and wires drivers/kernelsu (symlink + Makefile + Kconfig).
+          curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh" | bash -s "${{ inputs.kernelsu_branch }}"
+          echo "KSUN_COMMIT=$(git -C ./KernelSU-Next rev-parse HEAD)" >> $GITHUB_ENV
+          echo "KernelSU-Next (pershoot) commit: $(git -C ./KernelSU-Next rev-parse HEAD)"
+
       - name: Apply SUSFS Patches for KernelSU Next
         run: |
           cd "$CONFIG"
@@ -239,19 +258,18 @@ jobs:
           
           
           cd ..
-          echo "Applying SUSFS patches for KernelSU Next..."
-          cd ./KernelSU-Next
-          cp ../../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./
-          patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
-          
-          for file in $(find ./kernel -maxdepth 2 -name "*.rej" -exec basename {} .rej \;); do
-            echo "Patching file: $file with fix_$file.patch"
-            patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.3.0/fix_$file.patch"
-          done
-          echo "Patching Hook Mode!"
-          patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.3.0/overwrite_hook_mode.patch" || true
-          echo "Patching KSU_TOOLKIT Support for SusFS kernel!"
-          patch -p1 --forward < "../../kernel_patches/next/susfs_fix_patches/v2.3.0/ksu_toolkit.patch"
+          # pershoot's dev-susfs tree already ships SUSFS integrated (same as the
+          # WildKernels GKI repo treats next): no 10_enable_susfs_for_ksu.patch
+          # and no susfs_fix_patches / overwrite_hook_mode / ksu_toolkit patches
+          # are applied to the root tree.
+          echo "KernelSU-Next (pershoot) ships SUSFS - skipping KSU-side susfs patches."
+          # Soften the Kbuild config guard (same as the GKI repo): at parse time
+          # without a .config it would hard-error before defconfig sets
+          # CONFIG_KSU_SUSFS=y. No-op if upstream drops the guard.
+          if [ -f ./KernelSU-Next/kernel/Kbuild ] && grep -q 'KernelSU requires either CONFIG_KPROBES' ./KernelSU-Next/kernel/Kbuild; then
+            sed -i 's/$(error "KernelSU requires either CONFIG_KPROBES=y or CONFIG_KSU_SUSFS=y")/$(warning "KernelSU requires either CONFIG_KPROBES=y or CONFIG_KSU_SUSFS=y")/' ./KernelSU-Next/kernel/Kbuild
+            echo "Softened KSU config guard in KernelSU-Next/kernel/Kbuild"
+          fi
 
       - name: Add Configuration Settings
         run: |
@@ -272,6 +290,7 @@ jobs:
           echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig

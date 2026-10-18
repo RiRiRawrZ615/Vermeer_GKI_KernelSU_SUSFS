@@ -205,8 +205,8 @@ jobs:
         run: |
           cd "$CONFIG"
           echo "Adding KernelSU Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/stable/kernel/setup.sh" | bash -s "${{ inputs.kernelsu_branch }}"
-
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/dev/kernel/setup.sh" | bash -s "${{ inputs.kernelsu_branch }}"
+          
       - name: Apply SUSFS Patches for KernelSU Next
         run: |
           cd "$CONFIG"

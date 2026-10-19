@@ -140,12 +140,11 @@ jobs:
         env:
           BOOT_SIGN_KEY: ${{ secrets.BOOT_SIGN_KEY }}
         run: |
-          if [ ! -z "$BOOT_SIGN_KEY" ]; then
+          if [ -n "$BOOT_SIGN_KEY" ]; then
             echo "$BOOT_SIGN_KEY" > ./kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem
-            echo "BOOT_SIGN_KEY_PATH=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem" >> $GITHUB_ENV
+            echo "BOOT_SIGN_KEY_PATH=$GITHUB_WORKSPACE/kernel-build-tools/linux-x86/share/avb/testkey_rsa2048.pem" >> "$GITHUB_ENV"
           else
-            echo "BOOT_SIGN_KEY is not set. Exiting..."
-            exit 1
+            echo "BOOT_SIGN_KEY missing; continuing without a custom signing key for build diagnostics."
           fi
 
       - name: Install Repo
@@ -216,13 +215,21 @@ jobs:
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
       - name: Add KernelSU Next (pershoot dev-susfs)
+        env:
+          KERNELSU_BRANCH: ${{ inputs.kernelsu_branch }}
         run: |
           cd "$CONFIG"
           echo "Adding KernelSU Next from pershoot's fork..."
           # Same source the WildKernels GKI repo uses for KernelSU-Next + SUSFS:
           # pershoot/KernelSU-Next dev-susfs tip. His setup.sh self-references
           # the fork and wires drivers/kernelsu (symlink + Makefile + Kconfig).
-          curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh" | bash -s "${{ inputs.kernelsu_branch }}"
+          setup_script=$(mktemp "$RUNNER_TEMP/kernelsu-setup.XXXXXX.sh")
+          trap 'rm -f "$setup_script"' EXIT
+          curl --fail --location --show-error --silent \
+            --retry 3 --retry-all-errors --connect-timeout 15 --max-time 120 \
+            "https://raw.githubusercontent.com/pershoot/KernelSU-Next/dev-susfs/kernel/setup.sh" \
+            --output "$setup_script"
+          bash "$setup_script" "$KERNELSU_BRANCH"
           echo "KSUN_COMMIT=$(git -C ./KernelSU-Next rev-parse HEAD)" >> $GITHUB_ENV
           echo "KernelSU-Next (pershoot) commit: $(git -C ./KernelSU-Next rev-parse HEAD)"
 
@@ -235,27 +242,58 @@ jobs:
           
           cd common
           
-          # Fake kernel patch to fix failures
-          fake_patched=0
-          if [ "${{ inputs.android_version }}" = "android13" ] && [ "${{ inputs.kernel_version }}" = "5.15" ]; then
-            if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
-              echo "vma_pages Line not found. Fake Patching!"
-              fake_patched=1
-            fi
+          susfs_patch="50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch"
+          if [ "${{ inputs.android_version }}-${{ inputs.kernel_version }}" = "android13-5.15" ]; then
+            # Newer SUSFS patches include context from later Android 13 kernels.
+            # Adapt only the known differences; retain all SUSFS additions.
+            python3 - "$susfs_patch" <<'PY'
+          import re
+          import sys
+          from pathlib import Path
+
+          patch = Path(sys.argv[1])
+          sections = re.split(r"(?=^diff --git )", patch.read_text(), flags=re.M)
+          for index, section in enumerate(sections):
+              target = re.search(r"^--- a/(.+)$", section, re.M)
+              if not target or target[1] not in ("fs/namespace.c", "fs/proc/task_mmu.c"):
+                  continue
+              source = Path(target[1]).read_text()
+              trace_header = ("#include <trace/hooks/blk.h>" if target[1] == "fs/namespace.c"
+                              else "#include <trace/hooks/mm.h>")
+              if trace_header not in source.splitlines():
+                  section = section.replace(" " + trace_header + "\n", "")
+              if target[1] == "fs/proc/task_mmu.c":
+                  if "\tif (!vma_pages(vma))" not in source.splitlines():
+                      section = section.replace(" \tif (!vma_pages(vma))\n",
+                                                " \tsmap_gather_stats(vma, &mss, 0);\n")
+                  # Older kernels have no VMA padding; their mapping ends at vm_end.
+                  # Preserve the native helper on kernels that do support padding.
+                  section = section.replace(
+                      "+\t\t\t\tend = VMA_PAD_START(vma);\n",
+                      "+#ifdef VMA_PAD_START\n"
+                      "+\t\t\t\tend = VMA_PAD_START(vma);\n"
+                      "+#else\n"
+                      "+\t\t\t\tend = vma->vm_end;\n"
+                      "+#endif\n")
+              # Recount edited hunks so patch still validates their full contents.
+              hunks = re.split(r"(?=^@@ )", section, flags=re.M)
+              for hunk_index in range(1, len(hunks)):
+                  header, body = hunks[hunk_index].split("\n", 1)
+                  match = re.fullmatch(r"@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@(.*)", header)
+                  if not match:
+                      raise SystemExit(f"Unexpected patch header: {header}")
+                  lines = body.splitlines()
+                  old_count = sum(line.startswith((" ", "-")) for line in lines)
+                  new_count = sum(line.startswith((" ", "+")) for line in lines)
+                  hunks[hunk_index] = (f"@@ -{match[1]},{old_count} +{match[2]},{new_count} @@{match[3]}\n" + body)
+              sections[index] = "".join(hunks)
+          patch.write_text("".join(sections))
+          PY
           fi
-          
-          patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
-          
-          # Revert Fake kernel patch
-          if [ "$fake_patched" = 1 ]; then
-            if [ "${{ inputs.android_version }}" = "android13" ] && [ "${{ inputs.kernel_version }}" = "5.15" ]; then
-              if grep -qxF $'\t\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
-                echo "vma_pages Line found. Revert Fake Patching!"
-                sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-              fi
-            fi
-          fi
-          
+
+          # Reject incompatible patches before changing the kernel sources.
+          patch --dry-run --batch --forward -p1 < "$susfs_patch"
+          patch --batch --forward -p1 < "$susfs_patch"
           
           cd ..
           # pershoot's dev-susfs tree already ships SUSFS integrated (same as the
@@ -389,22 +427,28 @@ jobs:
       - name: Android 13/14/15 boot image build script
         run: |
           cd "$CONFIG/bootimgs"
+          signing_args=(--algorithm NONE)
+          if [ -n "${BOOT_SIGN_KEY_PATH:-}" ]; then
+            signing_args=(--algorithm SHA256_RSA2048 --key "$BOOT_SIGN_KEY_PATH")
+          else
+            echo "No custom signing key; generating unsigned AVB metadata for build diagnostics."
+          fi
           # Create gzip of the Image file
           gzip -n -k -f -9 ./Image > ./Image.gz
           
           echo "Building boot.img"
           $MKBOOTIMG --header_version 4 --kernel Image --output boot.img
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
+          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img "${signing_args[@]}"
           cp ./boot.img "../KSUN-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img"
           
           echo "Building boot-gz.img"
           $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
+          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img "${signing_args[@]}"
           cp ./boot-gz.img "../KSUN-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img"
           
           echo "Building boot-lz4.img"
           $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img
-          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
+          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img "${signing_args[@]}"
           cp ./boot-lz4.img "../KSUN-$KSUVER-${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img"
 
       - name: Compress all img files with gzip

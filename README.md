@@ -1,38 +1,34 @@
-# Vermeer GKI — CASS
+# CASS GKI Kernel
 
-An Android 13 GKI 5.15.123 (2023-11) kernel build with **Capacity Aware Superset Scheduler (CASS)**, **KernelSU-Next**, and **SUSFS**. This repository contains the build workflow and patches; the kernel source is downloaded during the build.
+Android 13 GKI 5.15.123 kernel with the Capacity Aware Superset Scheduler (CASS), KernelSU-Next, and SUSFS.
 
 ## Features
 
-- **CASS:** Selects CPUs for normal and real-time task wakeups based on capacity and load. It does not control CPU or GPU clock speeds directly.
-- **KernelSU-Next:** Kernel-based root support.
-- **SUSFS:** Kernel extensions for root-hiding functionality.
-- **Runtime statistics:** CPU-selection counters at `/sys/kernel/cass/stats`.
+- **CASS:** Capacity-aware CPU selection for fair and real-time tasks.
+- **KernelSU-Next:** Kernel-based root access.
+- **SUSFS:** Kernel support for root hiding.
+- **Runtime statistics:** CASS CPU-selection counters at `/sys/kernel/cass/stats`.
 
 ## Sources
 
-- **Kernel:** [Google Android Common Kernel](https://android.googlesource.com/kernel/common/) — Android 13 / 5.15 / 2023-11, synced through the [Android kernel manifest](https://android.googlesource.com/kernel/manifest/).
-- **CASS:** Sultan Alsawaf's Capacity Aware Superset Scheduler, adapted from vendor kernel implementations; see [`0001-cass-core-scheduler.patch`](patches/cass/0001-cass-core-scheduler.patch) for provenance.
+- **Kernel:** [Android Common Kernel](https://android.googlesource.com/kernel/common/) via the [Android kernel manifest](https://android.googlesource.com/kernel/manifest/) (`common-android13-5.15-2023-11`).
+- **CASS:** Sultan Alsawaf's scheduler, adapted from [dev-sm8350](https://github.com/dev-sm8350/kernel_oneplus_sm8350) and [ChicKernel](https://github.com/ChicKernel/device_xiaomi_gemstones-kernel/tree/android13-5.15-lts).
 - **KernelSU-Next:** [pershoot/KernelSU-Next](https://github.com/pershoot/KernelSU-Next) (`dev-susfs`).
-- **SUSFS:** [simonpunk/susfs4ksu](https://gitlab.com/simonpunk/susfs4ksu), with [pershoot's compatibility fixes](https://gitlab.com/pershoot/susfs4ksu).
+- **SUSFS:** [simonpunk/susfs4ksu](https://gitlab.com/simonpunk/susfs4ksu) with [pershoot's fixes](https://gitlab.com/pershoot/susfs4ksu).
 - **Additional patches:** [RiRiRawrZ615/kernel_patches](https://github.com/RiRiRawrZ615/kernel_patches).
-- **Flashable ZIP packaging:** [WildPlusKernel/AnyKernel3](https://github.com/WildPlusKernel/AnyKernel3) (`gki-2.0`).
-- **Repository foundation:** [WildKernels/GKI_KernelSU_SUSFS](https://github.com/WildKernels/GKI_KernelSU_SUSFS).
+- **Flashable ZIPs:** [WildPlusKernel/AnyKernel3](https://github.com/WildPlusKernel/AnyKernel3) (`gki-2.0`).
+- **Build workflow foundation:** [WildKernels/GKI_KernelSU_SUSFS](https://github.com/WildKernels/GKI_KernelSU_SUSFS).
 
-## Builds
+## Build and verify
 
-The [CASS GitHub Actions workflow](.github/workflows/build-a13-5-15-cass.yml) builds the kernel and publishes downloadable artifacts.
+The [GitHub Actions workflow](.github/workflows/build-a13-5-15-cass.yml) builds the kernel and uploads ZIPs and boot images as artifacts.
 
-To verify CASS is executing on a rooted device:
+Check CASS activity on a rooted device:
 
 ```sh
 su -c 'cat /sys/kernel/cass/stats'
 ```
 
-Increasing counters confirm CPU-selection calls, not performance improvements.
+Increasing counters confirm that CASS CPU selection is running.
 
-**Experimental:** Check device compatibility and keep a backup before flashing.
-
-## Credits
-
-CASS by **Sultan Alsawaf**. Thanks to the KernelSU-Next, SUSFS, WildKernels, and Android kernel contributors.
+**Experimental:** Confirm device compatibility and back up your original boot image before flashing.

@@ -1,0 +1,112 @@
+# CASS optional runtime statistics for the Android 13 GKI 5.15 patch series.
+# Apply after 0001, 0002 and 0003.
+diff --git a/init/Kconfig b/init/Kconfig
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -1292,4 +1292,13 @@
+ 	  given moment.
++
++config SCHED_CASS_STATS
++	bool "CASS runtime CPU-selection counters"
++	depends on SCHED_CASS && SYSFS
++	default n
++	help
++	  Expose successful CASS fair and real-time CPU-selection counts
++	  through the read-only /sys/kernel/cass/stats sysfs file.
++	  Intended for verification; no scheduling decisions are changed.
+ 
+ config SCHED_AUTOGROUP
+ 	bool "Automatic process group scheduling"
+diff --git a/kernel/sched/cass.c b/kernel/sched/cass.c
+--- a/kernel/sched/cass.c
++++ b/kernel/sched/cass.c
+@@ -25,6 +25,18 @@
+  * satisfy the overall load at any given moment.
+  */
+ 
++#ifdef CONFIG_SCHED_CASS_STATS
++#include <linux/cpu.h>
++#include <linux/init.h>
++#include <linux/kobject.h>
++#include <linux/percpu.h>
++#include <linux/sysfs.h>
++
++/* Written on the running CPU, without a contended global counter. */
++static DEFINE_PER_CPU(unsigned long, cass_fair_selections);
++static DEFINE_PER_CPU(unsigned long, cass_rt_selections);
++#endif
++
+ struct cass_cpu_cand {
+ 	int cpu;
+ 	unsigned int exit_lat;
+@@ -268,6 +280,14 @@
+ 		}
+ 	}
+ 
++#ifdef CONFIG_SCHED_CASS_STATS
++	/* Count selections that actually reached CASS, not early fallbacks. */
++	if (rt)
++		this_cpu_inc(cass_rt_selections);
++	else
++		this_cpu_inc(cass_fair_selections);
++#endif
++
+ 	return best->cpu;
+ }
+ 
+@@ -306,3 +326,45 @@
+ {
+ 	return cass_select_task_rq(p, prev_cpu, wake_flags, true);
+ }
++
++#ifdef CONFIG_SCHED_CASS_STATS
++static ssize_t cass_stats_show(struct kobject *kobj,
++			       struct kobj_attribute *attr, char *buf)
++{
++	unsigned long long fair = 0, rt = 0;
++	int cpu;
++
++	/* Possible (not only online) CPUs retain counts across hotplug. */
++	for_each_possible_cpu(cpu) {
++		fair += READ_ONCE(per_cpu(cass_fair_selections, cpu));
++		rt += READ_ONCE(per_cpu(cass_rt_selections, cpu));
++	}
++
++	/* A lockless snapshot: totals can change during this read. */
++	return sysfs_emit(buf,
++			  "fair_selections: %llu\n"
++			  "rt_selections: %llu\n"
++			  "total_selections: %llu\n",
++			  fair, rt, fair + rt);
++}
++
++static struct kobj_attribute cass_stats_attr =
++	__ATTR(stats, 0444, cass_stats_show, NULL);
++
++static int __init cass_stats_init(void)
++{
++	struct kobject *kobj;
++	int ret;
++
++	kobj = kobject_create_and_add("cass", kernel_kobj);
++	if (!kobj)
++		return -ENOMEM;
++
++	ret = sysfs_create_file(kobj, &cass_stats_attr.attr);
++	if (ret)
++		kobject_put(kobj);
++
++	return ret;
++}
++late_initcall(cass_stats_init);
++#endif
+diff --git a/arch/arm64/configs/gki_defconfig b/arch/arm64/configs/gki_defconfig
+--- a/arch/arm64/configs/gki_defconfig
++++ b/arch/arm64/configs/gki_defconfig
+@@ -33,5 +33,6 @@
+ CONFIG_NAMESPACES=y
+ # CONFIG_PID_NS is not set
+ CONFIG_SCHED_CASS=y
++CONFIG_SCHED_CASS_STATS=y
+ CONFIG_RT_SOFTINT_OPTIMIZATION=y
+ CONFIG_RELAY=y

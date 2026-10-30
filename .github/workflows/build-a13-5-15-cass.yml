@@ -334,15 +334,17 @@ jobs:
           CASS_DIR="$GITHUB_WORKSPACE/patches/cass"
           for PATCH in "$CASS_DIR"/0001-cass-core-scheduler.patch \
                        "$CASS_DIR"/0002-cass-fair-rt-integration.patch \
-                       "$CASS_DIR"/0003-cass-defconfig-enablement.patch; do
+                       "$CASS_DIR"/0003-cass-defconfig-enablement.patch \
+                       "$CASS_DIR"/0004-cass-runtime-stats.patch; do
             echo "Applying CASS patch: $(basename "$PATCH")"
             patch --dry-run --batch --forward -p1 < "$PATCH" || { echo "ERROR: CASS patch would fail: $PATCH" >&2; exit 1; }
             patch --batch --forward -p1 < "$PATCH" || { echo "ERROR: failed to apply CASS patch: $PATCH" >&2; exit 1; }
             REMOVED=$(find . -name '*.rej')
             if [ -n "$REMOVED" ]; then echo "ERROR: CASS .rej files found: $REMOVED" >&2; exit 1; fi
           done
+          grep -q '^CONFIG_SCHED_CASS_STATS=y' arch/arm64/configs/gki_defconfig || { echo 'ERROR: CASS stats not enabled' >&2; exit 1; }
           grep -q '^CONFIG_SCHED_CASS=y' arch/arm64/configs/gki_defconfig || { echo "ERROR: CONFIG_SCHED_CASS=y not found in gki_defconfig after CASS patches" >&2; exit 1; }
-          echo "All 3 CASS patches applied and verified."
+          echo "All 4 CASS patches applied and verified."
 
       - name: Add Configuration Settings
         run: |

@@ -1,0 +1,65 @@
+From 9819b3235b6fea88c42e7f0086bfc6304fb6c251 Mon Sep 17 00:00:00 2001
+From: dtingley11 <l0tsofcub3s@gmail.com>
+Date: Thu, 29 Oct 2026 20:32:17 -0700
+Subject: [PATCH 2/4] sched: Install CASS runqueue selection in fair and RT
+ sched classes
+
+Integrate CASS into the fair and real-time scheduling classes when
+CONFIG_SCHED_CASS is enabled, matching the reference implementations:
+
+  - kernel/sched/fair.c: include "cass.c" (which defines
+    cass_select_task_rq_fair()) and rename select_task_rq_fair to the
+    CASS implementation before the fair sched_class definition. A dummy
+    wrapper keeps the replaced static function referenced.
+  - kernel/sched/rt.c: include "cass_rt.h" (which declares
+    cass_select_task_rq_rt() and renames select_task_rq_rt) before the
+    RT sched_class definition.
+
+This GKI 5.15 tree (android13-5.15-2023-11) already provides the
+scheduler APIs CASS builds on, verified against the reference tree:
+task_util(), _task_util_est() and task_util_est() in fair.c, the
+uclamp_task_util() helper using task_util_est(), and the
+select_task_rq_fair()/select_task_rq_rt() signatures that CASS targets.
+No compatibility shims are therefore needed for the hook installation.
+---
+ kernel/sched/fair.c | 11 +++++++++++
+ kernel/sched/rt.c   |  1 +
+ 2 files changed, 12 insertions(+)
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index dda524ede..0bbe638c5 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -12029,6 +12029,17 @@ static unsigned int get_rr_interval_fair(struct rq *rq, struct task_struct *task
+ 	return rr_interval;
+ }
+ 
++#ifdef CONFIG_SCHED_CASS
++#include "cass.c"
++
++/* Use CASS. A dummy wrapper ensures the replaced function is still "used". */
++static inline void *select_task_rq_fair_dummy(void)
++{
++	return (void *)select_task_rq_fair;
++}
++#define select_task_rq_fair cass_select_task_rq_fair
++#endif /* CONFIG_SCHED_CASS */
++
+ /*
+  * All the scheduling class methods:
+  */
+diff --git a/kernel/sched/rt.c b/kernel/sched/rt.c
+index 485bf7180..93c184873 100644
+--- a/kernel/sched/rt.c
++++ b/kernel/sched/rt.c
+@@ -2625,6 +2625,7 @@ static unsigned int get_rr_interval_rt(struct rq *rq, struct task_struct *task)
+ 		return 0;
+ }
+ 
++#include "cass_rt.h"
+ DEFINE_SCHED_CLASS(rt) = {
+ 
+ 	.enqueue_task		= enqueue_task_rt,
+-- 
+2.56.0
+

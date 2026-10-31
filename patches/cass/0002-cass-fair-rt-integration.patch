@@ -1,7 +1,7 @@
 From 9819b3235b6fea88c42e7f0086bfc6304fb6c251 Mon Sep 17 00:00:00 2001
 From: dtingley11 <l0tsofcub3s@gmail.com>
 Date: Thu, 29 Oct 2026 20:32:17 -0700
-Subject: [PATCH 2/3] sched: Install CASS runqueue selection in fair and RT
+Subject: [PATCH 2/4] sched: Install CASS runqueue selection in fair and RT
  sched classes
 
 Integrate CASS into the fair and real-time scheduling classes when

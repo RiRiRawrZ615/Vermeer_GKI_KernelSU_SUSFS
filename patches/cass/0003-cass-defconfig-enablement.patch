@@ -1,7 +1,7 @@
 From 41559a9056d02c7084fbc08304f47115115db967 Mon Sep 17 00:00:00 2001
 From: dtingley11 <l0tsofcub3s@gmail.com>
 Date: Thu, 29 Oct 2026 20:32:17 -0700
-Subject: [PATCH] arm64: defconfig: Enable CASS
+Subject: [PATCH 3/4] arm64: defconfig: Enable CASS
 
 Enable the Capacity Aware Superset Scheduler (CONFIG_SCHED_CASS) in the
 arm64 GKI defconfig.
